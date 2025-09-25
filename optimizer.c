@@ -179,6 +179,11 @@ void mark_dead_code(ASTNode *node) {
                     if_node->then_statement->is_dead_code = 1;
                     mark_dead_code(if_node->then_statement);
                 }
+                // Se não há else, marcar o if inteiro como morto
+                if (!if_node->else_statement) {
+                    node->is_dead_code = 1;
+                    printf("If statement com condição sempre falsa marcado como código morto\n");
+                }
             }
             
             mark_dead_code(if_node->condition);
@@ -195,6 +200,9 @@ void mark_dead_code(ASTNode *node) {
                     while_node->body->is_dead_code = 1;
                     mark_dead_code(while_node->body);
                 }
+                // Marcar o while inteiro como morto
+                node->is_dead_code = 1;
+                printf("While statement com condição sempre falsa marcado como código morto\n");
             }
             
             mark_dead_code(while_node->condition);
@@ -206,8 +214,13 @@ void mark_dead_code(ASTNode *node) {
             
             // Se a condição é sempre falsa, marcar o corpo como código morto
             if (for_node->condition && is_condition_always_false(for_node->condition)) {
-                for_node->body->is_dead_code = 1;
-                mark_dead_code(for_node->body);
+                if (for_node->body) {
+                    for_node->body->is_dead_code = 1;
+                    mark_dead_code(for_node->body);
+                }
+                // Marcar o for inteiro como morto
+                node->is_dead_code = 1;
+                printf("For statement com condição sempre falsa marcado como código morto\n");
             }
             
             mark_dead_code(for_node->init);
