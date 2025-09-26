@@ -1,0 +1,81 @@
+; EBNF da linguagem aceita pelo parser (derivada de parser.y e lexer.l)
+
+program            = { statement } ;
+
+statement          = declaration ";"
+                   | assignment ";"
+                   | if_statement
+                   | while_statement
+                   | for_statement
+                   | compound_statement
+                   | "return" expression ";"
+                   | "break" ";"
+                   | "continue" ";" ;
+
+compound_statement = "{" { statement } "}" ;
+
+if_statement       = "if" "(" condition ")" statement
+                   | "if" "(" condition ")" statement "else" statement ;
+
+while_statement    = "while" "(" condition ")" statement ;
+
+; Versões do for aceitas equivalem a inicialização/condição/incremento opcionais
+for_statement      = "for" "(" [ for_init ] ";" [ condition ] ";" [ assignment ] ")" statement ;
+for_init           = declaration | assignment ;
+
+; Declarações suportadas:
+; - int/float/char/void simples (void sem inicialização)
+; - int/float/char com inicialização
+; - arrays int/float com tamanho numérico literal
+
+declaration        = "int" ID
+                   | "float" ID
+                   | "char" ID
+                   | "void" ID
+                   | "int" ID "=" expression
+                   | "float" ID "=" expression
+                   | "char" ID "=" expression
+                   | "int" ID "[" NUMBER "]"
+                   | "float" ID "[" NUMBER "]" ;
+
+; Atribuições e operações de ++/-- (prefixo e posfixo) sobre ID
+assignment         = ID "=" expression
+                   | ID "+=" expression
+                   | ID "-=" expression
+                   | ID "*=" expression
+                   | ID "/=" expression
+                   | ID "%=" expression
+                   | ID "++"
+                   | ID "--"
+                   | "++" ID
+                   | "--" ID ;
+
+; Condições aceitam expressões relacionais e combinações com &&, || e !
+condition          = or_expr ;
+
+or_expr            = and_expr { "||" and_expr } ;
+and_expr           = not_expr { "&&" not_expr } ;
+not_expr           = "!" not_expr
+                   | rel_expr
+                   | "(" condition ")" ;
+
+rel_op             = "==" | "!=" | "<" | "<=" | ">" | ">=" ;
+rel_expr           = add_expr [ rel_op add_expr ] ;
+
+; Expressões aritméticas com precedência habitual
+expression         = add_expr ;
+add_expr           = mul_expr { ("+" | "-") mul_expr } ;
+mul_expr           = primary { ("*" | "/" | "%") primary } ;
+
+primary            = "(" expression ")"
+                   | NUMBER
+                   | CHAR_LITERAL
+                   | STRING_LITERAL
+                   | ID
+                   | ID "[" expression "]" ;
+
+; Terminais léxicos (do lexer):
+; ID             = identificadores: [a-zA-Z_][a-zA-Z0-9_]*
+; NUMBER         = inteiros ou floats com opcional expoente
+; CHAR_LITERAL   = '\'' qualquer_char_sem_aspas '\''
+; STRING_LITERAL = '"' qualquer_seq_sem_aspas '"'
