@@ -245,6 +245,7 @@ static long eval_relational(Operator op, long a, long b) {
         case OP_LE: return a <= b;
         case OP_GT: return a > b;
         case OP_GE: return a >= b;
+        case OP_OR: return a || b;
         default: return 0;
     }
 }
