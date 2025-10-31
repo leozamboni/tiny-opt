@@ -9,6 +9,8 @@ static const char* op_to_assign_str(Operator op);
 static const char* relop_to_str(Operator op);
 static void emit_indent(int n);
 static void emit_block(ASTNode *node, int indent);
+static void emit_parameter_list(ASTNode *node);
+static void emit_argument_list(ASTNode *node);
 
 void print_optimized_code(ASTNode *ast) {
     if (!ast) { printf("\n"); return; }
@@ -214,8 +216,78 @@ static void emit_stmt(ASTNode *node) {
             printf("continue;\n");
             break;
         }
+        case NODE_FUNCTION_DEF: {
+            FunctionDefNode *f = (FunctionDefNode*)node;
+            printf("%s %s(", dtype_to_str(f->return_type), f->name);
+            if (f->parameters) {
+                emit_parameter_list(f->parameters);
+            }
+            printf(") ");
+            if (f->body && f->body->type == NODE_COMPOUND_STATEMENT) {
+                emit_block(((CompoundNode*)f->body)->statements, 0);
+            } else {
+                printf("{\n  ");
+                emit_stmt(f->body);
+                printf("}\n");
+            }
+            break;
+        }
         default:
             break;
+    }
+}
+
+static void emit_parameter_list(ASTNode *node) {
+    if (!node) return;
+    // Parâmetros são armazenados como uma lista de declarações
+    ASTNode *cur = node;
+    int first = 1;
+    while (cur && cur->type == NODE_DECLARATION) {
+        if (!first) printf(", ");
+        first = 0;
+        DeclarationNode *d = (DeclarationNode*)cur;
+        printf("%s %s", dtype_to_str(d->data_type), d->name);
+        cur = cur->next;
+    }
+    // Se for um ProgramNode, iterar sobre statements
+    if (node->type == NODE_PROGRAM) {
+        ProgramNode *prog = (ProgramNode*)node;
+        cur = prog->statements;
+        while (cur) {
+            if (!first) printf(", ");
+            first = 0;
+            if (cur->type == NODE_DECLARATION) {
+                DeclarationNode *d = (DeclarationNode*)cur;
+                printf("%s %s", dtype_to_str(d->data_type), d->name);
+            }
+            cur = cur->next;
+        }
+    }
+}
+
+static void emit_argument_list(ASTNode *node) {
+    if (!node) return;
+    // Argumentos são armazenados como uma lista de expressões
+    ASTNode *cur = node;
+    int first = 1;
+    // Se for um ProgramNode, iterar sobre statements
+    if (node->type == NODE_PROGRAM) {
+        ProgramNode *prog = (ProgramNode*)node;
+        cur = prog->statements;
+        while (cur) {
+            if (!first) printf(", ");
+            first = 0;
+            emit_expr(cur);
+            cur = cur->next;
+        }
+    } else {
+        // Tentar iterar diretamente
+        while (cur) {
+            if (!first) printf(", ");
+            first = 0;
+            emit_expr(cur);
+            cur = cur->next;
+        }
     }
 }
 
@@ -263,6 +335,15 @@ static void emit_expr(ASTNode *node) {
             } else {
                 emit_expr(u->operand);
             }
+            break;
+        }
+        case NODE_FUNCTION_CALL: {
+            FunctionCallNode *call = (FunctionCallNode*)node;
+            printf("%s(", call->name);
+            if (call->arguments) {
+                emit_argument_list(call->arguments);
+            }
+            printf(")");
             break;
         }
         default:

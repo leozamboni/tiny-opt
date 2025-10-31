@@ -53,6 +53,11 @@ static const char* simple_stmt_label(ASTNode *node, char *tmp, size_t tmpsz) {
 			snprintf(tmp, tmpsz, "assign %s", a->variable ? a->variable : "");
 			return tmp;
 		}
+        case NODE_FUNCTION_CALL: {
+            FunctionCallNode *c = (FunctionCallNode*)node;
+            snprintf(tmp, tmpsz, "call %s", c->name ? c->name : "");
+            return tmp;
+        }
 		case NODE_RETURN:
 			return "return";
 		case NODE_BREAK:
@@ -164,6 +169,19 @@ static CFGBuildResult build_cfg_stmt(ASTNode *stmt) {
 			CompoundNode *c = (CompoundNode*)stmt;
 			return build_cfg_list(c->statements);
 		}
+        case NODE_FUNCTION_DEF: {
+            FunctionDefNode *f = (FunctionDefNode*)stmt;
+            CFGBuildResult body_r = {0,0};
+            int entry = new_node_id();
+            char tmp[128];
+            snprintf(tmp, sizeof(tmp), "func %s", f->name ? f->name : "");
+            emit_node_label(entry, tmp);
+            if (f->body) body_r = build_cfg_stmt(f->body);
+            r.entry_id = entry;
+            r.exit_id = body_r.exit_id ? body_r.exit_id : entry;
+            if (body_r.entry_id) emit_edge(entry, body_r.entry_id, NULL);
+            return r;
+        }
 		default:
 			return build_linear_stmt(stmt);
 	}

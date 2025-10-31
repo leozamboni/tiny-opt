@@ -211,6 +211,43 @@ ASTNode* create_unary_op_node(Operator op, ASTNode *operand) {
     return (ASTNode*)node;
 }
 
+ASTNode* create_function_def_node(DataType return_type, char *name, ASTNode *parameters, ASTNode *body) {
+    FunctionDefNode *node = malloc(sizeof(FunctionDefNode));
+    node->base.type = NODE_FUNCTION_DEF;
+    node->base.next = NULL;
+    node->base.parent = NULL;
+    node->base.line = 0;
+    node->base.is_dead_code = 0;
+    node->return_type = return_type;
+    node->name = strdup(name);
+    node->parameters = parameters;
+    node->body = body;
+    return (ASTNode*)node;
+}
+
+ASTNode* create_function_call_node(char *name, ASTNode *arguments) {
+    FunctionCallNode *node = malloc(sizeof(FunctionCallNode));
+    node->base.type = NODE_FUNCTION_CALL;
+    node->base.next = NULL;
+    node->base.parent = NULL;
+    node->base.line = 0;
+    node->base.is_dead_code = 0;
+    node->name = strdup(name);
+    node->arguments = arguments;
+    return (ASTNode*)node;
+}
+
+ASTNode* create_parameter_list_node(ASTNode *parameters) {
+    ParameterListNode *node = malloc(sizeof(ParameterListNode));
+    node->base.type = NODE_PARAMETER_LIST;
+    node->base.next = NULL;
+    node->base.parent = NULL;
+    node->base.line = 0;
+    node->base.is_dead_code = 0;
+    node->parameters = parameters;
+    return (ASTNode*)node;
+}
+
 // Funções para manipular a AST
 void add_statement(ASTNode *program, ASTNode *statement) {
     if (program->type != NODE_PROGRAM) {
@@ -326,6 +363,24 @@ void free_ast(ASTNode *node) {
         case NODE_UNARY_OP: {
             UnaryOpNode *unary = (UnaryOpNode*)node;
             free_ast(unary->operand);
+            break;
+        }
+        case NODE_FUNCTION_DEF: {
+            FunctionDefNode *func = (FunctionDefNode*)node;
+            free(func->name);
+            free_ast(func->parameters);
+            free_ast(func->body);
+            break;
+        }
+        case NODE_FUNCTION_CALL: {
+            FunctionCallNode *call = (FunctionCallNode*)node;
+            free(call->name);
+            free_ast(call->arguments);
+            break;
+        }
+        case NODE_PARAMETER_LIST: {
+            ParameterListNode *params = (ParameterListNode*)node;
+            free_ast(params->parameters);
             break;
         }
         default:
@@ -456,6 +511,36 @@ void print_ast(ASTNode *node, int depth) {
             UnaryOpNode *unary = (UnaryOpNode*)node;
             printf("Unary Op\n");
             print_ast(unary->operand, depth + 1);
+            break;
+        }
+        case NODE_FUNCTION_DEF: {
+            FunctionDefNode *func = (FunctionDefNode*)node;
+            const char *ret_type = (func->return_type == TYPE_INT) ? "int" :
+                                   (func->return_type == TYPE_FLOAT) ? "float" :
+                                   (func->return_type == TYPE_CHAR) ? "char" : "void";
+            printf("Function Definition: %s %s\n", ret_type, func->name);
+            if (func->parameters) {
+                print_ast(func->parameters, depth + 1);
+            }
+            if (func->body) {
+                print_ast(func->body, depth + 1);
+            }
+            break;
+        }
+        case NODE_FUNCTION_CALL: {
+            FunctionCallNode *call = (FunctionCallNode*)node;
+            printf("Function Call: %s\n", call->name);
+            if (call->arguments) {
+                print_ast(call->arguments, depth + 1);
+            }
+            break;
+        }
+        case NODE_PARAMETER_LIST: {
+            ParameterListNode *params = (ParameterListNode*)node;
+            printf("Parameter List\n");
+            if (params->parameters) {
+                print_ast(params->parameters, depth + 1);
+            }
             break;
         }
         default:

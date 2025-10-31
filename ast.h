@@ -5,7 +5,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-// Tipos de nós da AST
 typedef enum {
     NODE_PROGRAM,
     NODE_DECLARATION,
@@ -24,10 +23,12 @@ typedef enum {
     NODE_CHAR_LITERAL,
     NODE_STRING_LITERAL,
     NODE_BINARY_OP,
-    NODE_UNARY_OP
+    NODE_UNARY_OP,
+    NODE_FUNCTION_DEF,
+    NODE_FUNCTION_CALL,
+    NODE_PARAMETER_LIST
 } NodeType;
 
-// Tipos de dados
 typedef enum {
     TYPE_INT,
     TYPE_FLOAT,
@@ -36,7 +37,6 @@ typedef enum {
     TYPE_ARRAY
 } DataType;
 
-// Operadores
 typedef enum {
     OP_ADD,
     OP_SUB,
@@ -62,22 +62,19 @@ typedef enum {
     OP_DEC
 } Operator;
 
-// Estrutura base do nó
 typedef struct ASTNode {
     NodeType type;
-    struct ASTNode *next;  // Para lista de declarações/instruções
+    struct ASTNode *next;  
     struct ASTNode *parent;
-    int line;              // Linha no código fonte
-    int is_dead_code;      // Flag para código morto
+    int line;              
+    int is_dead_code;      
 } ASTNode;
 
-// Nó de programa
 typedef struct {
     ASTNode base;
     struct ASTNode *statements;
 } ProgramNode;
 
-// Nó de declaração
 typedef struct {
     ASTNode base;
     DataType data_type;
@@ -86,7 +83,6 @@ typedef struct {
     int array_size;
 } DeclarationNode;
 
-// Nó de atribuição
 typedef struct {
     ASTNode base;
     char *variable;
@@ -94,16 +90,14 @@ typedef struct {
     struct ASTNode *value;
 } AssignmentNode;
 
-// Nó de expressão
 typedef struct {
     ASTNode base;
     Operator op;
     struct ASTNode *left;
     struct ASTNode *right;
-    char *value;  // Para literais
+    char *value;  
 } ExpressionNode;
 
-// Nó de condição
 typedef struct {
     ASTNode base;
     Operator op;
@@ -111,7 +105,6 @@ typedef struct {
     struct ASTNode *right;
 } ConditionNode;
 
-// Nó de if
 typedef struct {
     ASTNode base;
     struct ASTNode *condition;
@@ -119,14 +112,12 @@ typedef struct {
     struct ASTNode *else_statement;
 } IfNode;
 
-// Nó de while
 typedef struct {
     ASTNode base;
     struct ASTNode *condition;
     struct ASTNode *body;
 } WhileNode;
 
-// Nó de for
 typedef struct {
     ASTNode base;
     struct ASTNode *init;
@@ -135,50 +126,42 @@ typedef struct {
     struct ASTNode *body;
 } ForNode;
 
-// Nó de bloco composto
 typedef struct {
     ASTNode base;
     struct ASTNode *statements;
 } CompoundNode;
 
-// Nó de return
 typedef struct {
     ASTNode base;
     struct ASTNode *value;
 } ReturnNode;
 
-// Nó de break/continue
 typedef struct {
     ASTNode base;
-    int is_break;  // 1 para break, 0 para continue
+    int is_break; 
 } ControlNode;
 
-// Nó de identificador
 typedef struct {
     ASTNode base;
     char *name;
 } IdentifierNode;
 
-// Nó de número
 typedef struct {
     ASTNode base;
     char *value;
     DataType data_type;
 } NumberNode;
 
-// Nó de literal de caractere
 typedef struct {
     ASTNode base;
     char *value;
 } CharLiteralNode;
 
-// Nó de literal de string
 typedef struct {
     ASTNode base;
     char *value;
 } StringLiteralNode;
 
-// Nó de operação binária
 typedef struct {
     ASTNode base;
     Operator op;
@@ -186,14 +169,31 @@ typedef struct {
     struct ASTNode *right;
 } BinaryOpNode;
 
-// Nó de operação unária
 typedef struct {
     ASTNode base;
     Operator op;
     struct ASTNode *operand;
 } UnaryOpNode;
 
-// Funções para criar nós
+typedef struct {
+    ASTNode base;
+    DataType return_type;
+    char *name;
+    struct ASTNode *parameters;  // Lista de parâmetros (DeclarationNodes)
+    struct ASTNode *body;        // Corpo da função (CompoundNode)
+} FunctionDefNode;
+
+typedef struct {
+    ASTNode base;
+    char *name;
+    struct ASTNode *arguments;   // Lista de argumentos (expressões)
+} FunctionCallNode;
+
+typedef struct {
+    ASTNode base;
+    struct ASTNode *parameters;  // Lista de parâmetros ou argumentos
+} ParameterListNode;
+
 ASTNode* create_program_node();
 ASTNode* create_declaration_node(DataType type, char *name, ASTNode *init, int array_size);
 ASTNode* create_assignment_node(char *var, Operator op, ASTNode *value);
@@ -211,16 +211,12 @@ ASTNode* create_char_literal_node(char *value);
 ASTNode* create_string_literal_node(char *value);
 ASTNode* create_binary_op_node(Operator op, ASTNode *left, ASTNode *right);
 ASTNode* create_unary_op_node(Operator op, ASTNode *operand);
+ASTNode* create_function_def_node(DataType return_type, char *name, ASTNode *parameters, ASTNode *body);
+ASTNode* create_function_call_node(char *name, ASTNode *arguments);
+ASTNode* create_parameter_list_node(ASTNode *parameters);
 
-// Funções para manipular a AST
 void add_statement(ASTNode *program, ASTNode *statement);
 void free_ast(ASTNode *node);
 void print_ast(ASTNode *node, int depth);
-
-// Funções de otimização
-void mark_dead_code(ASTNode *node);
-void remove_dead_code(ASTNode *node);
-void optimize_constant_folding(ASTNode *node);
-void optimize_unreachable_code(ASTNode *node);
 
 #endif // AST_H 

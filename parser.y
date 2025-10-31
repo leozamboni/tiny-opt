@@ -48,6 +48,8 @@ int asprintf(char **strp, const char *fmt, ...) {
 %type <node> condition compound_statement
 %type <node> if_statement while_statement for_statement
 %type <node> program compound_program
+%type <node> function_def function_call
+%type <node> parameter_list argument_list
 
 %left AND OR
 %left EQ NE
@@ -70,10 +72,12 @@ program:
 statement:
       declaration ';'         { $$ = $1; }
     | assignment ';'          { $$ = $1; }
+    | function_call ';'       { $$ = $1; }
     | if_statement            { $$ = $1; }
     | while_statement         { $$ = $1; }
     | for_statement           { $$ = $1; }
     | compound_statement      { $$ = $1; }
+    | function_def            { $$ = $1; }
     | RETURN expression ';'   { 
         $$ = create_return_node($2);
     }
@@ -314,6 +318,101 @@ expression:
         // Simplificado para demonstração
         $$ = create_identifier_node($1);
         free($1);
+    }
+    | function_call { 
+        $$ = $1;
+    }
+    ;
+
+function_call:
+    ID '(' ')' {
+        $$ = create_function_call_node($1, NULL);
+        free($1);
+    }
+    | ID '(' argument_list ')' {
+        $$ = create_function_call_node($1, $3);
+        free($1);
+    }
+    ;
+
+argument_list:
+    expression {
+        // Criar uma lista com um único elemento
+        ProgramNode *prog = (ProgramNode*)create_program_node();
+        add_statement((ASTNode*)prog, $1);
+        $$ = (ASTNode*)prog;
+    }
+    | argument_list ',' expression {
+        // Adicionar à lista existente
+        ASTNode *arg_list = (ASTNode*)$1;
+        if (arg_list && arg_list->type == NODE_PROGRAM) {
+            add_statement(arg_list, $3);
+            $$ = arg_list;
+        } else {
+            // Fallback: criar nova lista
+            ProgramNode *prog = (ProgramNode*)create_program_node();
+            if (arg_list) add_statement((ASTNode*)prog, arg_list);
+            add_statement((ASTNode*)prog, $3);
+            $$ = (ASTNode*)prog;
+        }
+    }
+    ;
+
+function_def:
+    INT ID '(' ')' compound_statement {
+        $$ = create_function_def_node(TYPE_INT, $2, NULL, $5);
+        free($2);
+    }
+    | FLOAT ID '(' ')' compound_statement {
+        $$ = create_function_def_node(TYPE_FLOAT, $2, NULL, $5);
+        free($2);
+    }
+    | CHAR ID '(' ')' compound_statement {
+        $$ = create_function_def_node(TYPE_CHAR, $2, NULL, $5);
+        free($2);
+    }
+    | VOID ID '(' ')' compound_statement {
+        $$ = create_function_def_node(TYPE_VOID, $2, NULL, $5);
+        free($2);
+    }
+    | INT ID '(' parameter_list ')' compound_statement {
+        $$ = create_function_def_node(TYPE_INT, $2, $4, $6);
+        free($2);
+    }
+    | FLOAT ID '(' parameter_list ')' compound_statement {
+        $$ = create_function_def_node(TYPE_FLOAT, $2, $4, $6);
+        free($2);
+    }
+    | CHAR ID '(' parameter_list ')' compound_statement {
+        $$ = create_function_def_node(TYPE_CHAR, $2, $4, $6);
+        free($2);
+    }
+    | VOID ID '(' parameter_list ')' compound_statement {
+        $$ = create_function_def_node(TYPE_VOID, $2, $4, $6);
+        free($2);
+    }
+    ;
+
+parameter_list:
+    declaration {
+        // Criar uma lista com um único parâmetro
+        ProgramNode *prog = (ProgramNode*)create_program_node();
+        add_statement((ASTNode*)prog, $1);
+        $$ = (ASTNode*)prog;
+    }
+    | parameter_list ',' declaration {
+        // Adicionar à lista existente
+        ASTNode *param_list = (ASTNode*)$1;
+        if (param_list && param_list->type == NODE_PROGRAM) {
+            add_statement(param_list, $3);
+            $$ = param_list;
+        } else {
+            // Fallback: criar nova lista
+            ProgramNode *prog = (ProgramNode*)create_program_node();
+            if (param_list) add_statement((ASTNode*)prog, param_list);
+            add_statement((ASTNode*)prog, $3);
+            $$ = (ASTNode*)prog;
+        }
     }
     ;
 

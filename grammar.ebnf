@@ -4,10 +4,12 @@ program            = { statement } ;
 
 statement          = declaration ";"
                    | assignment ";"
+                   | function_call ";"
                    | if_statement
                    | while_statement
                    | for_statement
                    | compound_statement
+                   | function_def
                    | "return" expression ";"
                    | "break" ";"
                    | "continue" ";" ;
@@ -72,7 +74,24 @@ primary            = "(" expression ")"
                    | CHAR_LITERAL
                    | STRING_LITERAL
                    | ID
-                   | ID "[" expression "]" ;
+                   | ID "[" expression "]"
+                   | function_call ;
+
+; Definições de função
+function_def       = type_specifier ID "(" parameter_list ")" compound_statement
+                   | type_specifier ID "(" ")" compound_statement ;
+
+parameter_list     = declaration
+                   | parameter_list "," declaration ;
+
+type_specifier     = "int" | "float" | "char" | "void" ;
+
+; Chamadas de função
+function_call      = ID "(" argument_list ")"
+                   | ID "(" ")" ;
+
+argument_list      = expression
+                   | argument_list "," expression ;
 
 ; Terminais léxicos (do lexer):
 ; ID             = identificadores: [a-zA-Z_][a-zA-Z0-9_]*

@@ -17,3 +17,5 @@ if (1 || 0) {
 } else {
     a = 6;
 }
+
+return a;
