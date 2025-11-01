@@ -24,12 +24,7 @@ void optimize_code(ASTNode *ast)
     optimize_unreachable_code(ast, var_table, "global");
     optimize_empty_blocks(ast);
 
-    free_variable_table(var_table);
-
-    remove_dead_code(ast);
-
-    var_table = create_variable_table();
-    optimize_redundant_assignments(ast, var_table, "global");
+    dead_store_elimination(ast, NULL);
 
     remove_dead_code(ast);
 
@@ -56,7 +51,7 @@ void analyze_variable_usage(ASTNode *node, VariableTable *table, char *current_s
         DeclarationNode *decl = (DeclarationNode *)node;
         if (decl->name)
         {
-            add_variable(table, current_scope, decl->name, NULL);
+            add_variable(table, current_scope, decl->name);
             VariableInfo *var = find_variable(table, current_scope, decl->name);
             if (var)
             {
@@ -78,7 +73,7 @@ void analyze_variable_usage(ASTNode *node, VariableTable *table, char *current_s
         AssignmentNode *assign = (AssignmentNode *)node;
         if (assign->variable)
         {
-            add_variable(table, current_scope, assign->variable, NULL);
+            add_variable(table, current_scope, assign->variable);
 
             VariableValue *value = create_variable_value_from_node(assign->value, table, current_scope);
             set_variable_value(table, current_scope, assign->variable, value);
@@ -629,6 +624,13 @@ void mark_subtree_dead(ASTNode *node)
         mark_subtree_dead(wn->body);
         break;
     }
+    case NODE_CONDITION:
+    {
+        ConditionNode *cn = (ConditionNode *)node;
+        mark_subtree_dead(cn->left);
+        mark_subtree_dead(cn->right);
+        break;
+    }
     case NODE_FOR_STATEMENT:
     {
         ForNode *fn = (ForNode *)node;
@@ -665,7 +667,7 @@ void mark_subtree_dead(ASTNode *node)
         break;
     }
 
-    mark_subtree_dead(node->next);
+    // mark_subtree_dead(node->next);
 }
 
 void optimize_unreachable_code(ASTNode *node, VariableTable *table, char *current_scope)
@@ -700,7 +702,7 @@ void optimize_unreachable_code(ASTNode *node, VariableTable *table, char *curren
             }
             if (!if_node->else_statement)
             {
-                node->is_dead_code = 1;
+                mark_subtree_dead(node);
             }
         }
 
@@ -738,7 +740,6 @@ void optimize_unreachable_code(ASTNode *node, VariableTable *table, char *curren
             }
             node->is_dead_code = 1;
         }
-
         optimize_unreachable_code(for_node->init, table, current_scope);
         optimize_unreachable_code(for_node->condition, table, current_scope);
         optimize_unreachable_code(for_node->increment, table, current_scope);
@@ -790,7 +791,7 @@ void optimize_unreachable_code(ASTNode *node, VariableTable *table, char *curren
     optimize_unreachable_code(node->next, table, current_scope);
 }
 
-void optimize_redundant_assignments(ASTNode *node, VariableTable *table, char *current_scope)
+void dead_store_elimination(ASTNode *node, DSETable **table)
 {
     if (node == NULL)
         return;
@@ -800,100 +801,122 @@ void optimize_redundant_assignments(ASTNode *node, VariableTable *table, char *c
     case NODE_PROGRAM:
     {
         ProgramNode *prog = (ProgramNode *)node;
-        optimize_redundant_assignments(prog->statements, table, current_scope);
+        DSETable *prog_table = malloc(sizeof(DSETable));
+        prog_table->next = NULL;
+        prog_table->node = NULL;
+
+        DSETable *current = prog_table;
+
+        dead_store_elimination(prog->statements, &current);
+
+        while (prog_table->next)
+        {
+            DSETable *entry = prog_table->next;
+            if (entry->node->type == NODE_ASSIGNMENT)
+            {
+                DSETable *check = entry->next;
+                while (check && strcmp(check->name, entry->name) != 0)
+                {
+                    check = check->next;
+                }
+
+                if (check)
+                {
+                    if (check->node->type == NODE_ASSIGNMENT)
+                    {
+                        entry->node->is_dead_code = 1;
+                    }
+                }
+            }
+            prog_table->next = entry->next;
+            free(entry);
+        }
         break;
     }
     case NODE_DECLARATION:
     {
         DeclarationNode *decl = (DeclarationNode *)node;
-        if (decl->name)
+        if (decl->name && !node->is_dead_code)
         {
-            add_variable(table, current_scope, decl->name, node);
-            VariableInfo *var = find_variable(table, current_scope, decl->name);
-            if (var)
-            {
-                var->is_defined = 1;
-            }
+            DSETable *new_entry = malloc(sizeof(DSETable));
+            new_entry->name = decl->name;
+            new_entry->next = NULL;
+            new_entry->node = node;
+            (*table)->next = new_entry;
+            *table = new_entry;
         }
 
-        if (decl->initial_value)
-        {
-            VariableValue *value = create_variable_value_from_node(decl->initial_value, table, current_scope);
-            set_variable_value(table, current_scope, decl->name, value);
-        }
-
-        optimize_redundant_assignments(decl->initial_value, table, current_scope);
+        dead_store_elimination(decl->initial_value, table);
         break;
     }
     case NODE_ASSIGNMENT:
     {
         AssignmentNode *assign = (AssignmentNode *)node;
-        if (assign->variable)
+        if (assign->variable && !node->is_dead_code)
         {
             if (assign->op == OP_ASSIGN)
             {
-                add_variable(table, current_scope, assign->variable, node);
-                VariableInfo *var = find_variable(table, current_scope, assign->variable);
-                var->node = node;
-                if (!var->is_used)
-                {
-                    node->is_dead_code = 1;
-                }
+                DSETable *new_entry = malloc(sizeof(DSETable));
+                new_entry->name = assign->variable;
+                new_entry->next = NULL;
+                new_entry->node = node;
+                (*table)->next = new_entry;
+                *table = new_entry;
             }
         }
-        optimize_redundant_assignments(assign->value, table, current_scope);
+        dead_store_elimination(assign->value, table);
         break;
     }
     case NODE_IDENTIFIER:
     {
         IdentifierNode *id = (IdentifierNode *)node;
-        if (id->name)
+        if (id->name && !node->is_dead_code)
         {
-            VariableInfo *var = find_variable(table, current_scope, id->name);
-            if (var)
-            {
-                var->node->is_dead_code = 0;
-                var->is_used = 1;
-            }
+            DSETable *new_entry = malloc(sizeof(DSETable));
+            new_entry->name = id->name;
+            new_entry->next = NULL;
+            new_entry->node = node;
+            (*table)->next = new_entry;
+            *table = new_entry;
         }
         break;
     }
     case NODE_EXPRESSION:
     {
         ExpressionNode *expr = (ExpressionNode *)node;
-        optimize_redundant_assignments(expr->left, table, current_scope);
-        optimize_redundant_assignments(expr->right, table, current_scope);
+        dead_store_elimination(expr->left, table);
+        dead_store_elimination(expr->right, table);
         break;
     }
     case NODE_CONDITION:
     {
         ConditionNode *cond = (ConditionNode *)node;
-        optimize_redundant_assignments(cond->left, table, current_scope);
-        optimize_redundant_assignments(cond->right, table, current_scope);
+        dead_store_elimination(cond->left, table);
+        dead_store_elimination(cond->right, table);
         break;
     }
     case NODE_IF_STATEMENT:
     {
         IfNode *if_node = (IfNode *)node;
-        optimize_redundant_assignments(if_node->condition, table, current_scope);
-        optimize_redundant_assignments(if_node->then_statement, table, current_scope);
-        optimize_redundant_assignments(if_node->else_statement, table, current_scope);
+        dead_store_elimination(if_node->condition, table);
+        dead_store_elimination(if_node->then_statement, table);
+        dead_store_elimination(if_node->else_statement, table);
         break;
     }
     case NODE_WHILE_STATEMENT:
     {
         WhileNode *while_node = (WhileNode *)node;
-        optimize_redundant_assignments(while_node->condition, table, current_scope);
-        optimize_redundant_assignments(while_node->body, table, current_scope);
+        dead_store_elimination(while_node->condition, table);
+        dead_store_elimination(while_node->body, table);
         break;
     }
     case NODE_FOR_STATEMENT:
     {
         ForNode *for_node = (ForNode *)node;
-        optimize_redundant_assignments(for_node->init, table, current_scope);
-        optimize_redundant_assignments(for_node->condition, table, current_scope);
-        optimize_redundant_assignments(for_node->increment, table, current_scope);
-        optimize_redundant_assignments(for_node->body, table, current_scope);
+        dead_store_elimination(for_node->init, table);
+        dead_store_elimination(for_node->condition, table);
+        dead_store_elimination(for_node->increment, table);
+        dead_store_elimination(for_node->body, table);
         break;
     }
     case NODE_COMPOUND_STATEMENT:
@@ -901,47 +924,77 @@ void optimize_redundant_assignments(ASTNode *node, VariableTable *table, char *c
         CompoundNode *comp = (CompoundNode *)node;
         if (comp->statements)
         {
-            optimize_redundant_assignments(comp->statements, table, current_scope);
+            dead_store_elimination(comp->statements, table);
         }
         break;
     }
     case NODE_RETURN:
     {
         ReturnNode *ret = (ReturnNode *)node;
-        optimize_redundant_assignments(ret->value, table, current_scope);
+        dead_store_elimination(ret->value, table);
         break;
     }
     case NODE_FUNCTION_DEF:
     {
         FunctionDefNode *func = (FunctionDefNode *)node;
-        optimize_redundant_assignments(func->parameters, table, func->name);
-        optimize_redundant_assignments(func->body, table, func->name);
+        DSETable *func_table = malloc(sizeof(DSETable));
+        func_table->next = NULL;
+        func_table->node = NULL;
+
+        DSETable *current = func_table;
+
+        dead_store_elimination(func->parameters, &current);
+        dead_store_elimination(func->body, &current);
+
+        while (func_table->next)
+        {
+            DSETable *entry = func_table->next;
+            if (entry->node->type == NODE_ASSIGNMENT)
+            {
+                DSETable *check = entry->next;
+                while (check && strcmp(check->name, entry->name) != 0)
+                {
+                    check = check->next;
+                }
+
+                if (check)
+                {
+                    if (check->node->type == NODE_ASSIGNMENT)
+                    {
+                        entry->node->is_dead_code = 1;
+                    }
+                }
+            }
+            func_table->next = entry->next;
+            free(entry);
+        }
+
         break;
     }
     case NODE_FUNCTION_CALL:
     {
         FunctionCallNode *call = (FunctionCallNode *)node;
-        optimize_redundant_assignments(call->arguments, table, current_scope);
+        dead_store_elimination(call->arguments, table);
         break;
     }
     case NODE_BINARY_OP:
     {
         BinaryOpNode *bin = (BinaryOpNode *)node;
-        optimize_redundant_assignments(bin->left, table, current_scope);
-        optimize_redundant_assignments(bin->right, table, current_scope);
+        dead_store_elimination(bin->left, table);
+        dead_store_elimination(bin->right, table);
         break;
     }
     case NODE_UNARY_OP:
     {
         UnaryOpNode *unary = (UnaryOpNode *)node;
-        optimize_redundant_assignments(unary->operand, table, current_scope);
+        dead_store_elimination(unary->operand, table);
         break;
     }
     default:
         break;
     }
 
-    optimize_redundant_assignments(node->next, table, current_scope);
+    dead_store_elimination(node->next, table);
 }
 
 void optimize_empty_blocks(ASTNode *node)
@@ -1180,7 +1233,7 @@ VariableTable *create_variable_table()
     return table;
 }
 
-void add_variable(VariableTable *table, char *scope, char *name, ASTNode *node)
+void add_variable(VariableTable *table, char *scope, char *name)
 {
     if (name == NULL || find_variable(table, scope, name) != NULL)
         return;
@@ -1196,7 +1249,6 @@ void add_variable(VariableTable *table, char *scope, char *name, ASTNode *node)
     table->variables[table->count].is_used = 0;
     table->variables[table->count].is_defined = 0;
     table->variables[table->count].is_dead = 0;
-    table->variables[table->count].node = node;
     table->variables[table->count].value = NULL;
     table->count++;
 }
