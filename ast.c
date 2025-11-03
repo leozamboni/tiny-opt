@@ -1,12 +1,10 @@
 #include "ast.h"
 
-// Funções para criar nós
 ASTNode* create_program_node() {
     ProgramNode *node = malloc(sizeof(ProgramNode));
     node->base.type = NODE_PROGRAM;
     node->base.next = NULL;
     node->base.parent = NULL;
-    node->base.line = 0;
     node->base.is_dead_code = 0;
     node->statements = NULL;
     return (ASTNode*)node;
@@ -17,7 +15,6 @@ ASTNode* create_declaration_node(DataType type, char *name, ASTNode *init, int a
     node->base.type = NODE_DECLARATION;
     node->base.next = NULL;
     node->base.parent = NULL;
-    node->base.line = 0;
     node->base.is_dead_code = 0;
     node->data_type = type;
     node->name = strdup(name);
@@ -31,7 +28,6 @@ ASTNode* create_assignment_node(char *var, Operator op, ASTNode *value) {
     node->base.type = NODE_ASSIGNMENT;
     node->base.next = NULL;
     node->base.parent = NULL;
-    node->base.line = 0;
     node->base.is_dead_code = 0;
     node->variable = strdup(var);
     node->op = op;
@@ -44,7 +40,6 @@ ASTNode* create_expression_node(Operator op, ASTNode *left, ASTNode *right, char
     node->base.type = NODE_EXPRESSION;
     node->base.next = NULL;
     node->base.parent = NULL;
-    node->base.line = 0;
     node->base.is_dead_code = 0;
     node->op = op;
     node->left = left;
@@ -58,7 +53,6 @@ ASTNode* create_condition_node(Operator op, ASTNode *left, ASTNode *right) {
     node->base.type = NODE_CONDITION;
     node->base.next = NULL;
     node->base.parent = NULL;
-    node->base.line = 0;
     node->base.is_dead_code = 0;
     node->op = op;
     node->left = left;
@@ -71,7 +65,6 @@ ASTNode* create_if_node(ASTNode *condition, ASTNode *then_stmt, ASTNode *else_st
     node->base.type = NODE_IF_STATEMENT;
     node->base.next = NULL;
     node->base.parent = NULL;
-    node->base.line = 0;
     node->base.is_dead_code = 0;
     node->condition = condition;
     node->then_statement = then_stmt;
@@ -84,7 +77,6 @@ ASTNode* create_while_node(ASTNode *condition, ASTNode *body, uint64_t loop_hash
     node->base.type = NODE_WHILE_STATEMENT;
     node->base.next = NULL;
     node->base.parent = NULL;
-    node->base.line = 0;
     node->base.is_dead_code = 0;
     node->loop_hash = loop_hash;
     node->condition = condition;
@@ -97,7 +89,6 @@ ASTNode* create_for_node(ASTNode *init, ASTNode *condition, ASTNode *increment, 
     node->base.type = NODE_FOR_STATEMENT;
     node->base.next = NULL;
     node->base.parent = NULL;
-    node->base.line = 0;
     node->base.is_dead_code = 0;
     node->init = init;
     node->condition = condition;
@@ -115,7 +106,6 @@ ASTNode* create_compound_node(ASTNode *statements) {
     node->base.type = NODE_COMPOUND_STATEMENT;
     node->base.next = NULL;
     node->base.parent = NULL;
-    node->base.line = 0;
     node->base.is_dead_code = 0;
     node->statements = statements;
     return (ASTNode*)node;
@@ -126,7 +116,6 @@ ASTNode* create_return_node(ASTNode *value) {
     node->base.type = NODE_RETURN;
     node->base.next = NULL;
     node->base.parent = NULL;
-    node->base.line = 0;
     node->base.is_dead_code = 0;
     node->value = value;
     return (ASTNode*)node;
@@ -137,7 +126,6 @@ ASTNode* create_control_node(int is_break) {
     node->base.type = is_break ? NODE_BREAK : NODE_CONTINUE;
     node->base.next = NULL;
     node->base.parent = NULL;
-    node->base.line = 0;
     node->base.is_dead_code = 0;
     node->is_break = is_break;
     return (ASTNode*)node;
@@ -148,7 +136,6 @@ ASTNode* create_identifier_node(char *name) {
     node->base.type = NODE_IDENTIFIER;
     node->base.next = NULL;
     node->base.parent = NULL;
-    node->base.line = 0;
     node->base.is_dead_code = 0;
     node->name = strdup(name);
     return (ASTNode*)node;
@@ -159,7 +146,6 @@ ASTNode* create_number_node(char *value, DataType type) {
     node->base.type = NODE_NUMBER;
     node->base.next = NULL;
     node->base.parent = NULL;
-    node->base.line = 0;
     node->base.is_dead_code = 0;
     node->value = strdup(value);
     node->data_type = type;
@@ -171,7 +157,6 @@ ASTNode* create_char_literal_node(char *value) {
     node->base.type = NODE_CHAR_LITERAL;
     node->base.next = NULL;
     node->base.parent = NULL;
-    node->base.line = 0;
     node->base.is_dead_code = 0;
     node->value = strdup(value);
     return (ASTNode*)node;
@@ -182,7 +167,6 @@ ASTNode* create_string_literal_node(char *value) {
     node->base.type = NODE_STRING_LITERAL;
     node->base.next = NULL;
     node->base.parent = NULL;
-    node->base.line = 0;
     node->base.is_dead_code = 0;
     node->value = strdup(value);
     return (ASTNode*)node;
@@ -193,7 +177,6 @@ ASTNode* create_binary_op_node(Operator op, ASTNode *left, ASTNode *right) {
     node->base.type = NODE_BINARY_OP;
     node->base.next = NULL;
     node->base.parent = NULL;
-    node->base.line = 0;
     node->base.is_dead_code = 0;
     node->op = op;
     node->left = left;
@@ -206,7 +189,6 @@ ASTNode* create_unary_op_node(Operator op, ASTNode *operand) {
     node->base.type = NODE_UNARY_OP;
     node->base.next = NULL;
     node->base.parent = NULL;
-    node->base.line = 0;
     node->base.is_dead_code = 0;
     node->op = op;
     node->operand = operand;
@@ -218,7 +200,6 @@ ASTNode* create_function_def_node(DataType return_type, char *name, ASTNode *par
     node->base.type = NODE_FUNCTION_DEF;
     node->base.next = NULL;
     node->base.parent = NULL;
-    node->base.line = 0;
     node->base.is_dead_code = 0;
     node->return_type = return_type;
     node->name = strdup(name);
@@ -241,13 +222,11 @@ ASTNode* create_parameter_list_node(ASTNode *parameters) {
     node->base.type = NODE_PARAMETER_LIST;
     node->base.next = NULL;
     node->base.parent = NULL;
-    node->base.line = 0;
     node->base.is_dead_code = 0;
     node->parameters = parameters;
     return (ASTNode*)node;
 }
 
-// Funções para manipular a AST
 void add_statement(ASTNode *program, ASTNode *statement) {
     if (program->type != NODE_PROGRAM) {
         return;
@@ -285,7 +264,6 @@ ASTNode *add_args(ASTNode *list, ASTNode *expr) {
 void free_ast(ASTNode *node) {
     if (node == NULL) return;
     
-    // Liberar nós filhos primeiro
     switch (node->type) {
         case NODE_PROGRAM: {
             ProgramNode *prog = (ProgramNode*)node;
@@ -403,22 +381,17 @@ void free_ast(ASTNode *node) {
             break;
     }
     
-    // Liberar próximo nó na lista
     free_ast(node->next);
-    
-    // Liberar o nó atual
     free(node);
 }
 
 void print_ast(ASTNode *node, int depth) {
     if (node == NULL) return;
     
-    // Indentação
     for (int i = 0; i < depth; i++) {
         printf("  ");
     }
     
-    // Marcar código morto
     if (node->is_dead_code) {
         printf("[DEAD] ");
     }
@@ -564,6 +537,5 @@ void print_ast(ASTNode *node, int depth) {
             break;
     }
     
-    // Processar próximo nó na lista
     print_ast(node->next, depth);
 } 

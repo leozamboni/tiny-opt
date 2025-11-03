@@ -34,7 +34,7 @@ static const char* dtype_to_str(DataType t) {
         case TYPE_FLOAT: return "float";
         case TYPE_CHAR: return "char";
         case TYPE_VOID: return "void";
-        case TYPE_ARRAY: return "int"; // simplified
+        case TYPE_ARRAY: return "int"; 
         default: return "int";
     }
 }

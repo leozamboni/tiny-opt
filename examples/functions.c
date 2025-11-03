@@ -8,8 +8,9 @@ int get_sum(int x, int y) {
 }
 
 int main() {
-    int a = 5;
-    int b = 10;
+    int a = 10;
+    int b = 20;
+    int c = 30;
     return get_sum(a, b);
 }
 
