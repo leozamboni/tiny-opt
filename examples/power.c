@@ -1,0 +1,18 @@
+int power(int base, int exp) {
+    int result = 1;
+
+    while (exp > 0) {
+        if (exp % 2 == 1)
+            result *= base;
+        base *= base;
+        exp /= 2;
+    }
+
+    return result;
+}
+
+int main() {
+    int base = 2;
+    int exp = 4;
+    return power(base, exp);
+}

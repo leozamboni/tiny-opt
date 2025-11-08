@@ -23,7 +23,7 @@ void optimize_code(ASTNode *ast)
     reachability_analysis(ast, var_table, "global");
     empty_blocks(ast);
     liveness_and_dead_store_elimination(ast, NULL, 0);
-    
+
     remove_dead_code(ast);
 
     // print_optimization_report(ast);
@@ -941,7 +941,6 @@ int is_condition_always_true(ASTNode *condition, VariableTable *table, char *cur
 {
     if (condition == NULL)
         return 0;
-
     switch (condition->type)
     {
     case NODE_NUMBER:
@@ -970,6 +969,10 @@ int is_condition_always_true(ASTNode *condition, VariableTable *table, char *cur
                     a = left_var->value->number;
                 }
             }
+            if (c->left->type == NODE_CONDITION)
+            {
+                a = is_condition_always_true(c->left, table, current_scope);
+            }
         }
 
         if (c->right)
@@ -986,6 +989,10 @@ int is_condition_always_true(ASTNode *condition, VariableTable *table, char *cur
                 {
                     b = right_var->value->number;
                 }
+            }
+            if (c->right->type == NODE_CONDITION)
+            {
+                b = is_condition_always_true(c->right, table, current_scope);
             }
         }
 
@@ -1021,7 +1028,6 @@ int is_condition_always_false(ASTNode *condition, VariableTable *table, char *cu
     case NODE_CONDITION:
     {
         ConditionNode *c = (ConditionNode *)condition;
-
         long a = 0, b = 0;
         if (c->left)
         {
@@ -1039,6 +1045,10 @@ int is_condition_always_false(ASTNode *condition, VariableTable *table, char *cu
                     a = left_var->value->number;
                 }
             }
+            if (c->left->type == NODE_CONDITION)
+            {
+                a = is_condition_always_false(c->left, table, current_scope);
+            }
         }
 
         if (c->right)
@@ -1055,6 +1065,10 @@ int is_condition_always_false(ASTNode *condition, VariableTable *table, char *cu
                 {
                     b = right_var->value->number;
                 }
+            }
+            if (c->right->type == NODE_CONDITION)
+            {
+                b = is_condition_always_false(c->right, table, current_scope);
             }
         }
 

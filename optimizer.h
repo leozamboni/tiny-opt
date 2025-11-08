@@ -18,7 +18,6 @@ typedef struct {
 typedef struct {
     char *name;
     char *scope;
-    char *string_value;
     VariableValue *value;
 } VariableInfo;
 
@@ -59,3 +58,22 @@ void free_variable_table(VariableTable *table);
 void print_optimization_report(ASTNode *ast);
 
 #endif 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

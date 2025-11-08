@@ -1,100 +1,105 @@
-; EBNF da linguagem aceita pelo parser (derivada de parser.y e lexer.l)
+program ::= { statement } ;
 
-program            = { statement } ;
+statement ::=
+      declaration ";"                 -- declaração de variável/função (assinatura)
+    | assignment ";"                  -- atribuição
+    | function_call ";"               -- chamada de função
+    | if_statement
+    | while_statement
+    | for_statement
+    | compound_statement              -- bloco { ... }
+    | function_def                    -- definição de função
+    | "return" [ expression ] ";"     -- return opcionalmente com expressão
+    | "break" ";"                     -- break
+    | "continue" ";"                  -- continue
+    ;
 
-statement          = declaration ";"
-                   | assignment ";"
-                   | function_call ";"
-                   | if_statement
-                   | while_statement
-                   | for_statement
-                   | compound_statement
-                   | function_def
-                   | "return" expression ";"
-                   | "break" ";"
-                   | "continue" ";" ;
+declaration ::=
+      "int" <identifier> [ "[" <number> "]" ]
+    | "float" <identifier> [ "[" <number> "]" ]
+    | "char" <identifier> [ "[" <number> "]" ]
+    | "void" <identifier> [ "[" <number> "]" ]
+    ;   -- (declaração de parâmetro/variável simplificada conforme parser)
 
-compound_statement = "{" { statement } "}" ;
+assignment ::=
+      <identifier> "=" expression
+    | <identifier> "+=" expression
+    | <identifier> "-=" expression
+    | <identifier> "*=" expression
+    | <identifier> "/=" expression
+    | <identifier> "%=" expression
+    | <identifier> "++"
+    | <identifier> "--"
+    | "++" <identifier>
+    | "--" <identifier>
+    ;
 
-if_statement       = "if" "(" condition ")" statement
-                   | "if" "(" condition ")" statement "else" statement ;
+if_statement ::=
+      "if" "(" condition ")" statement
+    | "if" "(" condition ")" statement "else" statement
+    ;
 
-while_statement    = "while" "(" condition ")" statement ;
+while_statement ::=
+      "while" "(" condition ")" statement
+    ;
 
-; Versões do for aceitas equivalem a inicialização/condição/incremento opcionais
-for_statement      = "for" "(" [ for_init ] ";" [ condition ] ";" [ assignment ] ")" statement ;
-for_init           = declaration | assignment ;
+for_statement ::=
+      "for" "(" [ declaration | assignment ] ";" [ condition ] ";" [ assignment ] ")" statement
+    ; -- cobre as variações aceitas pelo parser (vazio/omissão de partes)
 
-; Declarações suportadas:
-; - int/float/char/void simples (void sem inicialização)
-; - int/float/char com inicialização
-; - arrays int/float com tamanho numérico literal
+compound_statement ::=
+    "{" compound_program "}"
+    ;
 
-declaration        = "int" ID
-                   | "float" ID
-                   | "char" ID
-                   | "void" ID
-                   | "int" ID "=" expression
-                   | "float" ID "=" expression
-                   | "char" ID "=" expression
-                   | "int" ID "[" NUMBER "]"
-                   | "float" ID "[" NUMBER "]" ;
+compound_program ::= { statement } ;
 
-; Atribuições e operações de ++/-- (prefixo e posfixo) sobre ID
-assignment         = ID "=" expression
-                   | ID "+=" expression
-                   | ID "-=" expression
-                   | ID "*=" expression
-                   | ID "/=" expression
-                   | ID "%=" expression
-                   | ID "++"
-                   | ID "--"
-                   | "++" ID
-                   | "--" ID ;
+condition ::=
+    expression         -- expressão simples como condição
+  | "!" condition
+  | "(" condition ")"
+  | expression relop expression
+  ;
 
-; Condições aceitam expressões relacionais e combinações com &&, || e !
-condition          = or_expr ;
+relop ::= "==" | "!=" | "<" | ">" | "<=" | ">=" | "&&" | "||" ;
 
-or_expr            = and_expr { "||" and_expr } ;
-and_expr           = not_expr { "&&" not_expr } ;
-not_expr           = "!" not_expr
-                   | rel_expr
-                   | "(" condition ")" ;
+expression ::=
+    additive_expression
+    ;
 
-rel_op             = "==" | "!=" | "<" | "<=" | ">" | ">=" ;
-rel_expr           = add_expr [ rel_op add_expr ] ;
+additive_expression ::=
+    multiplicative_expression { ( "+" | "-" ) multiplicative_expression }
+    ;
 
-; Expressões aritméticas com precedência habitual
-expression         = add_expr ;
-add_expr           = mul_expr { ("+" | "-") mul_expr } ;
-mul_expr           = primary { ("*" | "/" | "%") primary } ;
+multiplicative_expression ::=
+    unary_expression { ( "*" | "/" | "%" ) unary_expression }
+    ;
 
-primary            = "(" expression ")"
-                   | NUMBER
-                   | CHAR_LITERAL
-                   | STRING_LITERAL
-                   | ID
-                   | ID "[" expression "]"
-                   | function_call ;
+unary_expression ::=
+      [ ( "+" | "-" | "!" ) ] primary_expression
+    ;
 
-; Definições de função
-function_def       = type_specifier ID "(" parameter_list ")" compound_statement
-                   | type_specifier ID "(" ")" compound_statement ;
+primary_expression ::=
+      <number>
+    | <char_literal>
+    | <string_literal>
+    | <identifier>
+    | <identifier> "[" expression "]"
+    | function_call
+    | "(" expression ")"
+    ;
 
-parameter_list     = declaration
-                   | parameter_list "," declaration ;
+function_call ::=
+      <identifier> "(" [ argument_list ] ")"
+    ;
 
-type_specifier     = "int" | "float" | "char" | "void" ;
+argument_list ::=
+      expression { "," expression }
+    ;
 
-; Chamadas de função
-function_call      = ID "(" argument_list ")"
-                   | ID "(" ")" ;
+function_def ::=
+      ("int" | "float" | "char" | "void") <identifier> "(" [ parameter_list ] ")" compound_statement
+    ;
 
-argument_list      = expression
-                   | argument_list "," expression ;
-
-; Terminais léxicos (do lexer):
-; ID             = identificadores: [a-zA-Z_][a-zA-Z0-9_]*
-; NUMBER         = inteiros ou floats com opcional expoente
-; CHAR_LITERAL   = '\'' qualquer_char_sem_aspas '\''
-; STRING_LITERAL = '"' qualquer_seq_sem_aspas '"'
+parameter_list ::=
+      declaration { "," declaration }
+    ;
