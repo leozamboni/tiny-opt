@@ -1,21 +1,13 @@
 ---
-title: Tiny-Opt
+title: TinyOpt
 x-toc-enable: true
 ...
 
-Buy a bunny toy from your local toy store
+Bem-vindo ao website do TinyOpt!
 =========================================
 
-Bunnies are
-[free software users](https://www.gnu.org/philosophy/free-sw.html)
+O TinyOpt é um compilador experimental open source com foco didático, desenvolvido para demonstrar, de forma prática e acessível, o funcionamento das etapas de otimização de código em compiladores.
 
-This was funny when I started making this example site for Untitled, but then
-the novelty wore off. I wanted to make a parody of the Libreboot website.
+Construído em linguagem C e voltado para o ensino e pesquisa, o TinyOpt realiza análise estática e aplica técnicas clássicas de otimização em programas escritos em um subconjunto da linguagem C, transformando o código-fonte original em uma versão otimizada equivalente — sem alterar seu comportamento semântico.
 
-Anyway, look at some of the pages on this site.
-
-This gives you an idea for how to make a nice site using the Untitled static
-site generator.
-
-Anyway, go buy a bunny. Not a real bunny, because keeping rabbits locked up is
-unethical, but you can buy a plushy of a bunny. From your local toy store.
+A ferramenta foi projetada para ser intuitiva, transparente e modificável, incentivando estudantes e pesquisadores a explorar, adaptar e ampliar seus módulos. O código-fonte segue os padrões GNU e está disponível sob licença GPLv3, promovendo liberdade de uso, estudo e modificação.
