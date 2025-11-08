@@ -36,9 +36,13 @@ int asprintf(char **strp, const char *fmt, ...) {
     char* str;
     void* node;
     unsigned long hash;
+    struct {
+        char* name;
+        unsigned long hash;
+    } identifier;
 }
 
-%token <str> ID NUMBER CHAR_LITERAL STRING_LITERAL
+%token <str> NUMBER CHAR_LITERAL STRING_LITERAL
 %token INT FLOAT CHAR VOID RETURN
 %token IF ELSE BREAK CONTINUE
 %token EQ NE LE GE AND OR
@@ -52,6 +56,8 @@ int asprintf(char **strp, const char *fmt, ...) {
 %type <node> program compound_program
 %type <node> function_def function_call
 %type <node> parameter_list argument_list
+
+%token <identifier> ID
 
 %left AND OR
 %left EQ NE
@@ -93,85 +99,85 @@ statement:
 
 declaration:
       INT ID         { 
-        $$ = create_declaration_node(TYPE_INT, $2, NULL, 0);
-        free($2); 
+        $$ = create_declaration_node(TYPE_INT, $2.name, NULL, 0, $2.hash);
+        free($2.name); 
     }
     | FLOAT ID       { 
-        $$ = create_declaration_node(TYPE_FLOAT, $2, NULL, 0);
-        free($2); 
+        $$ = create_declaration_node(TYPE_FLOAT, $2.name, NULL, 0, $2.hash);
+        free($2.name); 
     }
     | CHAR ID        { 
-        $$ = create_declaration_node(TYPE_CHAR, $2, NULL, 0);
-        free($2); 
+        $$ = create_declaration_node(TYPE_CHAR, $2.name, NULL, 0, $2.hash);
+        free($2.name); 
     }
     | VOID ID        { 
-        $$ = create_declaration_node(TYPE_VOID, $2, NULL, 0);
-        free($2); 
+        $$ = create_declaration_node(TYPE_VOID, $2.name, NULL, 0, $2.hash);
+        free($2.name); 
     }
     | INT ID '=' expression { 
-        $$ = create_declaration_node(TYPE_INT, $2, $4, 0);
-        free($2); 
+        $$ = create_declaration_node(TYPE_INT, $2.name, $4, 0, $2.hash);
+        free($2.name); 
     }
     | FLOAT ID '=' expression { 
-        $$ = create_declaration_node(TYPE_FLOAT, $2, $4, 0);
-        free($2); 
+        $$ = create_declaration_node(TYPE_FLOAT, $2.name, $4, 0, $2.hash);
+        free($2.name); 
     }
     | CHAR ID '=' expression { 
-        $$ = create_declaration_node(TYPE_CHAR, $2, $4, 0);
-        free($2); 
+        $$ = create_declaration_node(TYPE_CHAR, $2.name, $4, 0, $2.hash);
+        free($2.name); 
     }
     | INT ID '[' NUMBER ']'   { 
-        $$ = create_declaration_node(TYPE_ARRAY, $2, NULL, atoi($4));
-        free($2); 
+        $$ = create_declaration_node(TYPE_ARRAY, $2.name, NULL, atoi($4), $2.hash);
+        free($2.name); 
         free($4); 
     }
     | FLOAT ID '[' NUMBER ']' { 
-        $$ = create_declaration_node(TYPE_ARRAY, $2, NULL, atoi($4));
-        free($2); 
+        $$ = create_declaration_node(TYPE_ARRAY, $2.name, NULL, atoi($4), $2.hash);
+        free($2.name); 
         free($4); 
     }
     ;
 
 assignment:
     ID '=' expression { 
-        $$ = create_assignment_node($1, OP_ASSIGN, $3);
-        free($1); 
+        $$ = create_assignment_node($1.name, OP_ASSIGN, $3, $1.hash);
+        free($1.name); 
     }
     | ID ADD_ASSIGN expression { 
-        $$ = create_assignment_node($1, OP_ADD_ASSIGN, $3);
-        free($1); 
+        $$ = create_assignment_node($1.name, OP_ADD_ASSIGN, $3, $1.hash);
+        free($1.name); 
     }
     | ID SUB_ASSIGN expression { 
-        $$ = create_assignment_node($1, OP_SUB_ASSIGN, $3);
-        free($1); 
+        $$ = create_assignment_node($1.name, OP_SUB_ASSIGN, $3, $1.hash);
+        free($1.name); 
     }
     | ID MUL_ASSIGN expression { 
-        $$ = create_assignment_node($1, OP_MUL_ASSIGN, $3);
-        free($1); 
+        $$ = create_assignment_node($1.name, OP_MUL_ASSIGN, $3, $1.hash);
+        free($1.name); 
     }
     | ID DIV_ASSIGN expression { 
-        $$ = create_assignment_node($1, OP_DIV_ASSIGN, $3);
-        free($1); 
+        $$ = create_assignment_node($1.name, OP_DIV_ASSIGN, $3, $1.hash);
+        free($1.name); 
     }
     | ID MOD_ASSIGN expression { 
-        $$ = create_assignment_node($1, OP_MOD_ASSIGN, $3);
-        free($1); 
+        $$ = create_assignment_node($1.name, OP_MOD_ASSIGN, $3, $1.hash);
+        free($1.name); 
     }
     | ID INC { 
-        $$ = create_assignment_node($1, OP_INC, NULL);
-        free($1); 
+        $$ = create_assignment_node($1.name, OP_INC, NULL, $1.hash);
+        free($1.name); 
     }
     | ID DEC { 
-        $$ = create_assignment_node($1, OP_DEC, NULL);
-        free($1); 
+        $$ = create_assignment_node($1.name, OP_DEC, NULL, $1.hash);
+        free($1.name); 
     }
     | INC ID { 
-        $$ = create_assignment_node($2, OP_INC, NULL);
-        free($2); 
+        $$ = create_assignment_node($2.name, OP_INC, NULL, $2.hash);
+        free($2.name); 
     }
     | DEC ID { 
-        $$ = create_assignment_node($2, OP_DEC, NULL);
-        free($2); 
+        $$ = create_assignment_node($2.name, OP_DEC, NULL, $2.hash);
+        free($2.name); 
     }
     ;
 
@@ -313,13 +319,13 @@ expression:
         free($1);
     }
     | ID { 
-        $$ = create_identifier_node($1);
-        free($1);
+        $$ = create_identifier_node($1.name, $1.hash);
+        free($1.name);
     }
     | ID '[' expression ']' { 
         // Simplificado para demonstração
-        $$ = create_identifier_node($1);
-        free($1);
+        $$ = create_identifier_node($1.name, $1.hash);
+        free($1.name);
     }
     | function_call { 
         $$ = $1;
@@ -328,12 +334,12 @@ expression:
 
 function_call:
     ID '(' ')' {
-        $$ = create_function_call_node($1, NULL);
-        free($1);
+        $$ = create_function_call_node($1.name, NULL);
+        free($1.name);
     }
   | ID '(' argument_list ')' {
-        $$ = create_function_call_node($1, $3);
-        free($1);
+        $$ = create_function_call_node($1.name, $3);
+        free($1.name);
     }
   ;
 
@@ -348,36 +354,36 @@ argument_list:
 
 function_def:
     INT ID '(' ')' compound_statement {
-        $$ = create_function_def_node(TYPE_INT, $2, NULL, $5);
-        free($2);
+        $$ = create_function_def_node(TYPE_INT, $2.name, NULL, $5);
+        free($2.name);
     }
     | FLOAT ID '(' ')' compound_statement {
-        $$ = create_function_def_node(TYPE_FLOAT, $2, NULL, $5);
-        free($2);
+        $$ = create_function_def_node(TYPE_FLOAT, $2.name, NULL, $5);
+        free($2.name);
     }
     | CHAR ID '(' ')' compound_statement {
-        $$ = create_function_def_node(TYPE_CHAR, $2, NULL, $5);
-        free($2);
+        $$ = create_function_def_node(TYPE_CHAR, $2.name, NULL, $5);
+        free($2.name);
     }
     | VOID ID '(' ')' compound_statement {
-        $$ = create_function_def_node(TYPE_VOID, $2, NULL, $5);
-        free($2);
+        $$ = create_function_def_node(TYPE_VOID, $2.name, NULL, $5);
+        free($2.name);
     }
     | INT ID '(' parameter_list ')' compound_statement {
-        $$ = create_function_def_node(TYPE_INT, $2, $4, $6);
-        free($2);
+        $$ = create_function_def_node(TYPE_INT, $2.name, $4, $6);
+        free($2.name);
     }
     | FLOAT ID '(' parameter_list ')' compound_statement {
-        $$ = create_function_def_node(TYPE_FLOAT, $2, $4, $6);
-        free($2);
+        $$ = create_function_def_node(TYPE_FLOAT, $2.name, $4, $6);
+        free($2.name);
     }
     | CHAR ID '(' parameter_list ')' compound_statement {
-        $$ = create_function_def_node(TYPE_CHAR, $2, $4, $6);
-        free($2);
+        $$ = create_function_def_node(TYPE_CHAR, $2.name, $4, $6);
+        free($2.name);
     }
     | VOID ID '(' parameter_list ')' compound_statement {
-        $$ = create_function_def_node(TYPE_VOID, $2, $4, $6);
-        free($2);
+        $$ = create_function_def_node(TYPE_VOID, $2.name, $4, $6);
+        free($2.name);
     }
     ;
 
