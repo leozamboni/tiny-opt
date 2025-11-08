@@ -10,7 +10,7 @@ ASTNode* create_program_node() {
     return (ASTNode*)node;
 }
 
-ASTNode* create_declaration_node(DataType type, char *name, ASTNode *init, int array_size) {
+ASTNode* create_declaration_node(DataType type, char *name, ASTNode *init, int array_size, uint64_t hash) {
     DeclarationNode *node = malloc(sizeof(DeclarationNode));
     node->base.type = NODE_DECLARATION;
     node->base.next = NULL;
@@ -18,18 +18,20 @@ ASTNode* create_declaration_node(DataType type, char *name, ASTNode *init, int a
     node->base.is_dead_code = 0;
     node->data_type = type;
     node->name = strdup(name);
+    node->hash = hash;
     node->initial_value = init;
     node->array_size = array_size;
     return (ASTNode*)node;
 }
 
-ASTNode* create_assignment_node(char *var, Operator op, ASTNode *value) {
+ASTNode* create_assignment_node(char *var, Operator op, ASTNode *value, uint64_t hash) {
     AssignmentNode *node = malloc(sizeof(AssignmentNode));
     node->base.type = NODE_ASSIGNMENT;
     node->base.next = NULL;
     node->base.parent = NULL;
     node->base.is_dead_code = 0;
     node->variable = strdup(var);
+    node->hash = hash;
     node->op = op;
     node->value = value;
     return (ASTNode*)node;
@@ -131,13 +133,14 @@ ASTNode* create_control_node(int is_break) {
     return (ASTNode*)node;
 }
 
-ASTNode* create_identifier_node(char *name) {
+ASTNode* create_identifier_node(char *name, uint64_t hash) {
     IdentifierNode *node = malloc(sizeof(IdentifierNode));
     node->base.type = NODE_IDENTIFIER;
     node->base.next = NULL;
     node->base.parent = NULL;
     node->base.is_dead_code = 0;
     node->name = strdup(name);
+    node->hash = hash;
     return (ASTNode*)node;
 }
 

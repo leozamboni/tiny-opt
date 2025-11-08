@@ -1,9 +1,13 @@
-int power(int base, int exp) {
+int power(int base, int exp)
+{
     int result = 1;
 
-    while (exp > 0) {
+    while (exp > 0)
+    {
         if (exp % 2 == 1)
+        {
             result *= base;
+        }
         base *= base;
         exp /= 2;
     }
@@ -11,10 +15,12 @@ int power(int base, int exp) {
     return result;
 }
 
-int main() {
+int main()
+{
     int base = 2;
     int exp = 1;
-    if (exp == 3) {
+    if (exp == 3)
+    {
         exp = 4;
     }
     exp = 4;

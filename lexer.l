@@ -54,7 +54,8 @@ string_literal \"[^\"]*\"
                 }
 
 {id}            {
-                    yylval.str = strdup(yytext);
+                    yylval.identifier.hash = fnv1a_with_salt(yytext);
+                    yylval.identifier.name = strdup(yytext);
                     return ID;
                 }
 
