@@ -1,5 +1,5 @@
 ---
-title: TinyOpt
+title: <img src="./logo.png" alt="" srcset="">
 x-toc-enable: true
 ...
 
