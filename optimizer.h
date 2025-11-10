@@ -13,26 +13,26 @@ typedef struct {
     char *str;
     int number;
     ValueType type;
-} VariableValue;
+} SymbolValue;
 
-typedef struct DSETable {
+typedef struct SymbolTable {
     char *name;
     char *scope;
-    VariableValue *value;
+    SymbolValue *value;
     uint64_t loop_hash;
     uint64_t id_hash;
-    struct DSETable *next;
+    struct SymbolTable *next;
     ASTNode *node;
-} DSETable;
+} SymbolTable;
 
 void optimize_code(ASTNode *ast);
 
 void remove_dead_code(ASTNode *node);
-void set_var_table(ASTNode *node, DSETable **head, DSETable **tail, uint64_t loop_hash, char *scope);
+void set_symtab(ASTNode *node, SymbolTable **head, SymbolTable **tail, uint64_t loop_hash, char *scope);
 
 void constant_folding(ASTNode *node);
-void reachability_analysis(ASTNode *node, DSETable *table, char *current_scope);
-void liveness_and_dead_store_elimination(DSETable *table);
+void reachability_analysis(ASTNode *node, SymbolTable *table, char *current_scope);
+void liveness_dse(SymbolTable *table);
 void empty_blocks(ASTNode *node);
 
 int has_return_statement(ASTNode *node);

@@ -13,25 +13,22 @@ static void fold_in_tree(ASTNode *node);
 static int is_pure_expression(ASTNode *expr);
 static long eval_relational(Operator op, long a, long b);
 static long eval_binary(Operator op, long a, long b);
-
-void print_dse_table(DSETable *head);
-VariableValue *evaluate_expression_value(ASTNode *expr, DSETable *table, char *scope);
+void print_dse_table(SymbolTable *head);
+SymbolValue *evaluate_expression_value(ASTNode *expr, SymbolTable *table, char *scope);
 
 void optimize_code(ASTNode *ast)
 {
-    DSETable *head = malloc(sizeof(DSETable));
+    SymbolTable *head = malloc(sizeof(SymbolTable));
     head->next = NULL;
-    DSETable *tail = head;
+    SymbolTable *tail = head;
 
     constant_folding(ast);
 
-    set_var_table(ast, &head, &tail, 0, "global");
+    set_symtab(ast, &head, &tail, 0, "global");
 
     reachability_analysis(ast, head, "global");
-    liveness_and_dead_store_elimination(head);
-
+    liveness_dse(head);
     empty_blocks(ast);
-    liveness_and_dead_store_elimination(head);
 
     remove_dead_code(ast);
 
@@ -83,7 +80,7 @@ const char *get_node_type_str(NodeType type)
     }
 }
 
-void print_dse_table(DSETable *head)
+void print_dse_table(SymbolTable *head)
 {
     printf("\n=========================== DSE TABLE ===========================\n");
     printf("%-3s %-15s %-15s %-10s %-15s %-15s %-15s %-15s %-10s\n",
@@ -91,7 +88,7 @@ void print_dse_table(DSETable *head)
            "Loop Hash", "ID Hash", "Node Type", "Dead?");
     printf("------------------------------------------------------------------------------------------------------------------------------------\n");
 
-    DSETable *current = head;
+    SymbolTable *current = head;
     int index = 1;
 
     while (current != NULL)
@@ -489,12 +486,12 @@ void mark_subtree_dead(ASTNode *node)
     // mark_subtree_dead(node->next);
 }
 
-int eval_condition(ASTNode *condition, DSETable *head, char *scope)
+int eval_condition(ASTNode *condition, SymbolTable *head, char *scope)
 {
     if (!condition)
         return -1;
 
-    VariableValue *val = evaluate_expression_value(condition, head, scope);
+    SymbolValue *val = evaluate_expression_value(condition, head, scope);
 
     if (!val)
         return -1; // não foi possível resolver
@@ -510,7 +507,7 @@ int eval_condition(ASTNode *condition, DSETable *head, char *scope)
     return -1; // caso string
 }
 
-void reachability_analysis(ASTNode *node, DSETable *head, char *scope)
+void reachability_analysis(ASTNode *node, SymbolTable *head, char *scope)
 {
     if (node == NULL)
         return;
@@ -640,11 +637,11 @@ void reachability_analysis(ASTNode *node, DSETable *head, char *scope)
     reachability_analysis(node->next, head, scope);
 }
 
-void liveness_and_dead_store_elimination(DSETable *table)
+void liveness_dse(SymbolTable *table)
 {
-    for (DSETable *aux = table->next; aux; aux = aux->next)
+    for (SymbolTable *aux = table->next; aux; aux = aux->next)
     {
-        DSETable *entry = aux;
+        SymbolTable *entry = aux;
 
         // CASO: n = n;
         if (entry->node->type == NODE_ASSIGNMENT)
@@ -663,10 +660,10 @@ void liveness_and_dead_store_elimination(DSETable *table)
 
         if (entry->node->type == NODE_DECLARATION || entry->node->type == NODE_ASSIGNMENT)
         {
-            DSETable *check = entry->next;
+            SymbolTable *check = entry->next;
             if (entry->loop_hash)
             {
-                DSETable *aux_check = table->next;
+                SymbolTable *aux_check = table->next;
                 while (aux_check)
                 {
                     if (aux_check->loop_hash == entry->loop_hash)
@@ -694,7 +691,7 @@ void liveness_and_dead_store_elimination(DSETable *table)
 
         if (entry->node->type == NODE_ASSIGNMENT)
         {
-            DSETable *check = entry->next;
+            SymbolTable *check = entry->next;
             while (check)
             {
                 if (strcmp(check->name, entry->name) == 0 && strcmp(check->scope, entry->scope) == 0 && !check->node->is_dead_code)
@@ -714,10 +711,10 @@ void liveness_and_dead_store_elimination(DSETable *table)
     }
 }
 
-VariableValue *resolve_final_value(DSETable *head, const char *name, const char *scope)
+SymbolValue *resolve_final_value(SymbolTable *head, const char *name, const char *scope)
 {
-    DSETable *current = head;
-    DSETable *last_match = NULL;
+    SymbolTable *current = head;
+    SymbolTable *last_match = NULL;
 
     // Encontra a última atribuição para o nome dentro do mesmo escopo
     while (current != NULL)
@@ -734,7 +731,7 @@ VariableValue *resolve_final_value(DSETable *head, const char *name, const char 
         return NULL;
 
     // printf("last math %s val t %d\n", name, last_match->value->number);
-    VariableValue *val = last_match->value;
+    SymbolValue *val = last_match->value;
 
     // Se o valor for literal (int ou string), retorna
     if (val->type == VALUE_TYPE_INT || val->type == VALUE_TYPE_STRING)
@@ -755,7 +752,7 @@ VariableValue *resolve_final_value(DSETable *head, const char *name, const char 
     return NULL;
 }
 
-VariableValue *evaluate_expression_value(ASTNode *expr, DSETable *table, char *scope)
+SymbolValue *evaluate_expression_value(ASTNode *expr, SymbolTable *table, char *scope)
 {
     if (!expr)
         return NULL;
@@ -765,7 +762,7 @@ VariableValue *evaluate_expression_value(ASTNode *expr, DSETable *table, char *s
     case NODE_NUMBER:
     {
         NumberNode *num = (NumberNode *)expr;
-        VariableValue *val = malloc(sizeof(VariableValue));
+        SymbolValue *val = malloc(sizeof(SymbolValue));
         val->type = VALUE_TYPE_INT;
         val->number = atoi(num->value);
         return val;
@@ -774,7 +771,7 @@ VariableValue *evaluate_expression_value(ASTNode *expr, DSETable *table, char *s
     case NODE_STRING_LITERAL:
     {
         StringLiteralNode *str = (StringLiteralNode *)expr;
-        VariableValue *val = malloc(sizeof(VariableValue));
+        SymbolValue *val = malloc(sizeof(SymbolValue));
         val->type = VALUE_TYPE_STRING;
         val->str = str->value;
         return val;
@@ -784,7 +781,7 @@ VariableValue *evaluate_expression_value(ASTNode *expr, DSETable *table, char *s
     {
         IdentifierNode *id = (IdentifierNode *)expr;
 
-        VariableValue *r = malloc(sizeof(VariableValue));
+        SymbolValue *r = malloc(sizeof(SymbolValue));
         return resolve_final_value(table, id->name, scope);
     }
 
@@ -792,8 +789,8 @@ VariableValue *evaluate_expression_value(ASTNode *expr, DSETable *table, char *s
     case NODE_BINARY_OP:
     {
         BinaryOpNode *bin = (BinaryOpNode *)expr;
-        VariableValue *left_val = evaluate_expression_value(bin->left, table, scope);
-        VariableValue *right_val = evaluate_expression_value(bin->right, table, scope);
+        SymbolValue *left_val = evaluate_expression_value(bin->left, table, scope);
+        SymbolValue *right_val = evaluate_expression_value(bin->right, table, scope);
 
         // CASO: ... || 1
         if (right_val && right_val->type == VALUE_TYPE_INT && bin->op == OP_OR && right_val->number > 0)
@@ -824,7 +821,7 @@ VariableValue *evaluate_expression_value(ASTNode *expr, DSETable *table, char *s
         if (left_val->type != VALUE_TYPE_INT || right_val->type != VALUE_TYPE_INT)
             return NULL;
 
-        VariableValue *result = malloc(sizeof(VariableValue));
+        SymbolValue *result = malloc(sizeof(SymbolValue));
         result->type = VALUE_TYPE_INT;
 
         switch (bin->op)
@@ -873,7 +870,7 @@ VariableValue *evaluate_expression_value(ASTNode *expr, DSETable *table, char *s
     }
 }
 
-void set_var_table(ASTNode *node, DSETable **head, DSETable **tail, uint64_t loop_hash, char *scope)
+void set_symtab(ASTNode *node, SymbolTable **head, SymbolTable **tail, uint64_t loop_hash, char *scope)
 {
     if (node == NULL)
         return;
@@ -883,7 +880,7 @@ void set_var_table(ASTNode *node, DSETable **head, DSETable **tail, uint64_t loo
     case NODE_PROGRAM:
     {
         ProgramNode *prog = (ProgramNode *)node;
-        set_var_table(prog->statements, head, tail, loop_hash, scope);
+        set_symtab(prog->statements, head, tail, loop_hash, scope);
         break;
     }
     case NODE_DECLARATION:
@@ -891,7 +888,7 @@ void set_var_table(ASTNode *node, DSETable **head, DSETable **tail, uint64_t loo
         DeclarationNode *decl = (DeclarationNode *)node;
         if (decl->name)
         {
-            DSETable *new_entry = malloc(sizeof(DSETable));
+            SymbolTable *new_entry = malloc(sizeof(SymbolTable));
             new_entry->name = decl->name;
             new_entry->id_hash = decl->hash;
             new_entry->loop_hash = loop_hash;
@@ -902,18 +899,18 @@ void set_var_table(ASTNode *node, DSETable **head, DSETable **tail, uint64_t loo
             (*tail)->next = new_entry;
             *tail = new_entry;
 
-            if (decl->initial_value && loop_hash == 0) // TODO: incluir optimizacoes dentro de loops
+            if (decl->initial_value) 
             {
-                VariableValue *val = evaluate_expression_value(decl->initial_value, *head, scope);
+                SymbolValue *val = evaluate_expression_value(decl->initial_value, *head, scope);
                 if (val)
                 {
-                    new_entry->value = malloc(sizeof(VariableValue));
-                    memcpy(new_entry->value, val, sizeof(VariableValue));
+                    new_entry->value = malloc(sizeof(SymbolValue));
+                    memcpy(new_entry->value, val, sizeof(SymbolValue));
                 }
             }
         }
 
-        set_var_table(decl->initial_value, head, tail, loop_hash, scope);
+        set_symtab(decl->initial_value, head, tail, loop_hash, scope);
         break;
     }
     case NODE_ASSIGNMENT:
@@ -921,7 +918,7 @@ void set_var_table(ASTNode *node, DSETable **head, DSETable **tail, uint64_t loo
         AssignmentNode *assign = (AssignmentNode *)node;
         if (assign->variable)
         {
-            DSETable *new_entry = malloc(sizeof(DSETable));
+            SymbolTable *new_entry = malloc(sizeof(SymbolTable));
             new_entry->name = assign->variable;
             new_entry->id_hash = assign->hash;
             new_entry->loop_hash = loop_hash;
@@ -932,17 +929,17 @@ void set_var_table(ASTNode *node, DSETable **head, DSETable **tail, uint64_t loo
             (*tail)->next = new_entry;
             *tail = new_entry;
 
-            if (assign->value && loop_hash == 0) // TODO: incluir optimizacoes dentro de loops
+            if (assign->value) 
             {
-                VariableValue *val = evaluate_expression_value(assign->value, *head, scope);
+                SymbolValue *val = evaluate_expression_value(assign->value, *head, scope);
                 if (val)
                 {
-                    new_entry->value = malloc(sizeof(VariableValue));
-                    memcpy(new_entry->value, val, sizeof(VariableValue));
+                    new_entry->value = malloc(sizeof(SymbolValue));
+                    memcpy(new_entry->value, val, sizeof(SymbolValue));
                 }
             }
         }
-        set_var_table(assign->value, head, tail, loop_hash, scope);
+        set_symtab(assign->value, head, tail, loop_hash, scope);
         break;
     }
     case NODE_IDENTIFIER:
@@ -950,9 +947,9 @@ void set_var_table(ASTNode *node, DSETable **head, DSETable **tail, uint64_t loo
         IdentifierNode *id = (IdentifierNode *)node;
         if (id->name)
         {
-            VariableValue *val = resolve_final_value(*head, id->name, scope);
+            SymbolValue *val = resolve_final_value(*head, id->name, scope);
 
-            DSETable *new_entry = malloc(sizeof(DSETable));
+            SymbolTable *new_entry = malloc(sizeof(SymbolTable));
             new_entry->loop_hash = loop_hash;
             new_entry->name = id->name;
             new_entry->id_hash = id->hash;
@@ -965,8 +962,8 @@ void set_var_table(ASTNode *node, DSETable **head, DSETable **tail, uint64_t loo
 
             if (val)
             {
-                new_entry->value = malloc(sizeof(VariableValue));
-                memcpy(new_entry->value, val, sizeof(VariableValue));
+                new_entry->value = malloc(sizeof(SymbolValue));
+                memcpy(new_entry->value, val, sizeof(SymbolValue));
             }
         }
         break;
@@ -974,39 +971,39 @@ void set_var_table(ASTNode *node, DSETable **head, DSETable **tail, uint64_t loo
     case NODE_EXPRESSION:
     {
         ExpressionNode *expr = (ExpressionNode *)node;
-        set_var_table(expr->left, head, tail, loop_hash, scope);
-        set_var_table(expr->right, head, tail, loop_hash, scope);
+        set_symtab(expr->left, head, tail, loop_hash, scope);
+        set_symtab(expr->right, head, tail, loop_hash, scope);
         break;
     }
     case NODE_CONDITION:
     {
         ConditionNode *cond = (ConditionNode *)node;
-        set_var_table(cond->left, head, tail, loop_hash, scope);
-        set_var_table(cond->right, head, tail, loop_hash, scope);
+        set_symtab(cond->left, head, tail, loop_hash, scope);
+        set_symtab(cond->right, head, tail, loop_hash, scope);
         break;
     }
     case NODE_IF_STATEMENT:
     {
         IfNode *if_node = (IfNode *)node;
-        set_var_table(if_node->condition, head, tail, loop_hash, scope);
-        set_var_table(if_node->then_statement, head, tail, loop_hash, scope);
-        set_var_table(if_node->else_statement, head, tail, loop_hash, scope);
+        set_symtab(if_node->condition, head, tail, loop_hash, scope);
+        set_symtab(if_node->then_statement, head, tail, loop_hash, scope);
+        set_symtab(if_node->else_statement, head, tail, loop_hash, scope);
         break;
     }
     case NODE_WHILE_STATEMENT:
     {
         WhileNode *while_node = (WhileNode *)node;
-        set_var_table(while_node->condition, head, tail, while_node->loop_hash, scope);
-        set_var_table(while_node->body, head, tail, while_node->loop_hash, scope);
+        set_symtab(while_node->condition, head, tail, while_node->loop_hash, scope);
+        set_symtab(while_node->body, head, tail, while_node->loop_hash, scope);
         break;
     }
     case NODE_FOR_STATEMENT:
     {
         ForNode *for_node = (ForNode *)node;
-        set_var_table(for_node->init, head, tail, for_node->loop_hash, scope);
-        set_var_table(for_node->condition, head, tail, for_node->loop_hash, scope);
-        set_var_table(for_node->increment, head, tail, for_node->loop_hash, scope);
-        set_var_table(for_node->body, head, tail, for_node->loop_hash, scope);
+        set_symtab(for_node->init, head, tail, for_node->loop_hash, scope);
+        set_symtab(for_node->condition, head, tail, for_node->loop_hash, scope);
+        set_symtab(for_node->increment, head, tail, for_node->loop_hash, scope);
+        set_symtab(for_node->body, head, tail, for_node->loop_hash, scope);
         break;
     }
     case NODE_COMPOUND_STATEMENT:
@@ -1014,47 +1011,47 @@ void set_var_table(ASTNode *node, DSETable **head, DSETable **tail, uint64_t loo
         CompoundNode *comp = (CompoundNode *)node;
         if (comp->statements)
         {
-            set_var_table(comp->statements, head, tail, loop_hash, scope);
+            set_symtab(comp->statements, head, tail, loop_hash, scope);
         }
         break;
     }
     case NODE_RETURN:
     {
         ReturnNode *ret = (ReturnNode *)node;
-        set_var_table(ret->value, head, tail, loop_hash, scope);
+        set_symtab(ret->value, head, tail, loop_hash, scope);
         break;
     }
     case NODE_FUNCTION_DEF:
     {
         FunctionDefNode *func = (FunctionDefNode *)node;
-        set_var_table(func->parameters, head, tail, loop_hash, func->name);
-        set_var_table(func->body, head, tail, loop_hash, func->name);
+        set_symtab(func->parameters, head, tail, loop_hash, func->name);
+        set_symtab(func->body, head, tail, loop_hash, func->name);
         break;
     }
     case NODE_FUNCTION_CALL:
     {
         FunctionCallNode *call = (FunctionCallNode *)node;
-        set_var_table(call->arguments, head, tail, loop_hash, scope);
+        set_symtab(call->arguments, head, tail, loop_hash, scope);
         break;
     }
     case NODE_BINARY_OP:
     {
         BinaryOpNode *bin = (BinaryOpNode *)node;
-        set_var_table(bin->left, head, tail, loop_hash, scope);
-        set_var_table(bin->right, head, tail, loop_hash, scope);
+        set_symtab(bin->left, head, tail, loop_hash, scope);
+        set_symtab(bin->right, head, tail, loop_hash, scope);
         break;
     }
     case NODE_UNARY_OP:
     {
         UnaryOpNode *unary = (UnaryOpNode *)node;
-        set_var_table(unary->operand, head, tail, loop_hash, scope);
+        set_symtab(unary->operand, head, tail, loop_hash, scope);
         break;
     }
     default:
         break;
     }
 
-    set_var_table(node->next, head, tail, loop_hash, scope);
+    set_symtab(node->next, head, tail, loop_hash, scope);
 }
 
 int all_statements_dead(ASTNode *stmt_list)
