@@ -3,6 +3,6 @@
 
 #include "ast.h"
 
-void print_optimized_code(ASTNode *ast);
+void print_optimized_code (ASTNode * ast);
 
-#endif 
+#endif

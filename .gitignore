@@ -4,3 +4,5 @@ parser.tab.h
 tinyopt
 results.csv
 bin
+*.c~
+*.h~

@@ -3,8 +3,6 @@
 
 #include "ast.h"
 
-void print_cfg_dot(ASTNode *ast);
+void print_cfg_dot (ASTNode * ast);
 
 #endif // CFG_H
-
-

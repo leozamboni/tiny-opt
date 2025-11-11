@@ -1,4 +1,4 @@
-int mdc(int a, int b) {
+int gcd(int a, int b) {
     while (b != 0) {
         int resto = a % b;
         a = b;
@@ -15,6 +15,6 @@ int main() {
     if (y == 1) {
         y = 10;
     }
-    return mdc(x, y);
+    return gcd(x, y);
     int z = 10;
 }
