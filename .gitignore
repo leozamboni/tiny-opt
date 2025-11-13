@@ -3,6 +3,8 @@ parser.tab.c
 parser.tab.h
 tinyopt
 results.csv
+compile_commands.json
+.puml
 bin
 *.c~
 *.h~

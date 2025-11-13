@@ -17,6 +17,11 @@ $(OUT): $(SRC)
 format:
 	@indent -gnu *.c *.h 
 
+uml:
+	@clang-uml
+	@plantuml -DPLANTUML_LIMIT_SIZE=16384 -Dscale=2 tinyopt.puml
+
 clean:
 	rm -f $(OUT) parser.tab.* lex.yy.c
 	rm -f *.c~ *.h~ 
+	rm -f *.puml

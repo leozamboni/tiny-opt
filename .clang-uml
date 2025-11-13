@@ -1,0 +1,12 @@
+compilation_database_dir: .
+output_directory: .
+diagrams:
+  tinyopt:
+    type: class
+    title: "TinyOpt UML"
+    glob:
+      - ./*.c
+      - ./*.h
+    plantuml:
+      before:
+        - 'left to right direction'
