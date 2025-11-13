@@ -63,9 +63,6 @@ optimize (TinyOpt_t **tinyopt)
   empty_blocks ((*tinyopt)->ast);
 
   remove_dead_code ((*tinyopt)->ast);
-
-  // print_dse_table(head);
-  // print_optimization_report(ast);
 }
 
 void

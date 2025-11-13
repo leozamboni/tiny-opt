@@ -16,7 +16,7 @@ int factorial(int n)
 
 int main()
 {
-    int n = 1;
+    int n = 1 + 1;
     int m = 2;
     n = 10;
     return factorial(n);

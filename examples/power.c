@@ -19,7 +19,7 @@ int power(int base, int exp)
 int main()
 {
     int base = 2;
-    int exp = 1;
+    int exp = 1 * 5;
     if (exp == 3)
     {
         exp = 4;
