@@ -14,7 +14,7 @@
  *⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⡎⠀⠀⠀⢸⠏⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
  *⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⠻⠿⠶⠂⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠛⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
  *  TinyOpt
- *  Copyright (c) 2025 leozamboni 
+ *  Copyright (c) 2025 leozamboni
  *
  *  this program is free software: you can redistribute it and/or modify
  *  it under the terms of the gnu general public license as published by
@@ -47,6 +47,8 @@ static long eval_binary (Operator op, long a, long b);
 
 SymbolValue *evaluate_expression_value (TinyOptASTNode_t *expr,
                                         TinyOptStab_t *table, char *scope);
+void liveness (TinyOptStab_t *table);
+void dse (TinyOptStab_t *table);
 
 void
 optimize (TinyOpt_t **tinyopt)
@@ -56,7 +58,8 @@ optimize (TinyOpt_t **tinyopt)
   set_symtab ((*tinyopt)->ast, (*tinyopt)->stab, 0, "global");
 
   reachability_analysis ((*tinyopt)->ast, (*tinyopt)->stab, "global");
-  liveness_dse ((*tinyopt)->stab);
+  liveness ((*tinyopt)->stab);
+  dse ((*tinyopt)->stab);
   empty_blocks ((*tinyopt)->ast);
 
   remove_dead_code ((*tinyopt)->ast);
@@ -582,97 +585,270 @@ reachability_analysis (TinyOptASTNode_t *node, TinyOptStab_t *head,
 }
 
 void
-liveness_dse (TinyOptStab_t *table)
+liveness (TinyOptStab_t *table)
 {
   if (!table)
     return;
 
-  // Percorre todos os buckets da tabela
+  /* índice do escopo "global" */
+  uint64_t global_hash = stab_hash_string ("global");
+  size_t global_index = (size_t)(global_hash % table->size);
+
   for (size_t i = 0; i < table->size; i++)
     {
       SymbolBucket *bucket = table->buckets[i];
       while (bucket)
         {
           Symbol *entry = bucket->symbol;
-
-          // CASO: n = n;
-          if (entry->node->type == NODE_ASSIGNMENT)
+          if (!entry || !entry->node || !entry->name)
             {
-              TinyOptAssignmentNode_t *assig
-                  = (TinyOptAssignmentNode_t *)entry->node;
-              if (assig->value && assig->value->type == NODE_IDENTIFIER
-                  && assig->op == OP_ASSIGN)
-                {
-                  TinyOptIdentifierNode_t *id
-                      = (TinyOptIdentifierNode_t *)assig->value;
-                  if (strcmp (id->name, assig->variable) == 0)
-                    {
-                      entry->node->is_dead_code = 1;
-                      bucket = bucket->next;
-                      continue;
-                    }
-                }
+              bucket = bucket->next;
+              continue;
             }
 
-          if (entry->node->type == NODE_DECLARATION
-              || entry->node->type == NODE_ASSIGNMENT)
+          TinyOptASTNode_t *node = entry->node;
+
+          if (node->type == NODE_DECLARATION || node->type == NODE_ASSIGNMENT)
             {
-              // Verifica se o símbolo é usado em outro lugar no mesmo escopo
               int used = 0;
 
-              // Percorre todos os buckets novamente para procurar usos
-              for (size_t j = 0; j < table->size && !used; j++)
+              /* Se o escopo deste entry for o "global" */
+              int is_global_scope = (i == global_index);
+
+              if (is_global_scope)
                 {
-                  SymbolBucket *check_bucket = table->buckets[j];
-                  while (check_bucket)
+                  /* Verifica TODOs os buckets procurando NODE_IDENTIFIER com
+                   * mesmo nome */
+                  for (size_t j = 0; j < table->size && !used; j++)
                     {
-                      Symbol *check = check_bucket->symbol;
-                      if (check != entry && check->name && entry->name
-                          && strcmp (check->name, entry->name) == 0
-                          && check->node && !check->node->is_dead_code
-                          && check->node->type == NODE_IDENTIFIER)
+                      SymbolBucket *check_bucket = table->buckets[j];
+                      while (check_bucket)
                         {
-                          used = 1;
-                          break;
+                          Symbol *check = check_bucket->symbol;
+                          if (check && check->node && check->name
+                              && check->node->type == NODE_IDENTIFIER
+                              && strcmp (check->name, entry->name) == 0
+                              && !check->node->is_dead_code)
+                            {
+                              used = 1;
+                              break;
+                            }
+                          check_bucket = check_bucket->next;
                         }
-                      check_bucket = check_bucket->next;
+                    }
+                }
+              else
+                {
+                  /* Escopo local: só olhamos no mesmo bucket (index == i) */
+                  /* Três casos:
+                     A) node == NODE_DECLARATION:  -> percorrer a partir da
+                     posição atual (entry) até o fim do bucket
+                     B) node == NODE_ASSIGNMENT && entry->loop_hash == 0 ->
+                     similar ao A
+                     C) node == NODE_ASSIGNMENT &&
+                     entry->loop_hash != 0 -> procurar a partir do primeiro
+                     elemento com loop_hash igual até fim
+                  */
+
+                  if (node->type == NODE_DECLARATION
+                      || (node->type == NODE_ASSIGNMENT
+                          && entry->loop_hash == 0))
+                    {
+                      /* percorre a partir da posição atual (entry->bucket
+                         node) -> usamos bucket (ponteiro atual) e iniciamos
+                         por bucket->next para considerar apenas posições
+                         depois do entry. OBS: bucket aponta para o elemento
+                         atual do laço externo.
+                      */
+                      SymbolBucket *tmp = bucket->next;
+                      while (tmp)
+                        {
+                          Symbol *check = tmp->symbol;
+                          if (check && check->node && check->name
+                              && check->node->type == NODE_IDENTIFIER
+                              && strcmp (check->name, entry->name) == 0
+                              && !check->node->is_dead_code)
+                            {
+                              used = 1;
+                              break;
+                            }
+                          tmp = tmp->next;
+                        }
+                    }
+                  else /* node->type == NODE_ASSIGNMENT && entry->loop_hash !=
+                          0 */
+                    {
+                      /* percorre o bucket inteiro, mas só começa a considerar
+                         quando encontrar o primeiro elemento cujo loop_hash ==
+                         entry->loop_hash */
+                      SymbolBucket *tmp = table->buckets[i];
+                      int start_checking = 0;
+                      while (tmp)
+                        {
+                          Symbol *check = tmp->symbol;
+                          if (!check)
+                            {
+                              tmp = tmp->next;
+                              continue;
+                            }
+
+                          if (!start_checking)
+                            {
+                              if (check->loop_hash == entry->loop_hash)
+                                {
+                                  /* a partir daqui passamos a verificar
+                                   * (inclusive esse check) */
+                                  start_checking = 1;
+                                }
+                            }
+
+                          if (start_checking)
+                            {
+                              if (check->node && check->name
+                                  && check->node->type == NODE_IDENTIFIER
+                                  && strcmp (check->name, entry->name) == 0
+                                  && !check->node->is_dead_code)
+                                {
+                                  used = 1;
+                                  break;
+                                }
+                            }
+
+                          tmp = tmp->next;
+                        }
                     }
                 }
 
               if (!used)
-                entry->node->is_dead_code = 1;
+                node->is_dead_code = 1;
             }
 
-          if (entry->node->type == NODE_ASSIGNMENT)
-            {
-              int overwritten = 0;
+          bucket = bucket->next;
+        }
+    }
+}
 
-              // Busca outra atribuição que sobrescreve a atual
-              for (size_t j = 0; j < table->size && !overwritten; j++)
+void
+dse (TinyOptStab_t *table)
+{
+  if (!table)
+    return;
+
+  for (size_t i = 0; i < table->size; i++)
+    {
+      SymbolBucket *bucket = table->buckets[i];
+
+      while (bucket)
+        {
+          Symbol *entry = bucket->symbol;
+
+          if (!entry || !entry->node || entry->node->is_dead_code
+              || entry->node->type != NODE_ASSIGNMENT)
+            {
+              bucket = bucket->next;
+              continue;
+            }
+
+          TinyOptAssignmentNode_t *assign
+              = (TinyOptAssignmentNode_t *)entry->node;
+
+          /* CASO 1: autoatribuição n = n; */
+          if (assign->op == OP_ASSIGN && assign->value
+              && assign->value->type == NODE_IDENTIFIER)
+            {
+              TinyOptIdentifierNode_t *id
+                  = (TinyOptIdentifierNode_t *)assign->value;
+
+              if (id->name && assign->variable
+                  && strcmp (id->name, assign->variable) == 0)
                 {
-                  SymbolBucket *check_bucket = table->buckets[j];
-                  while (check_bucket)
-                    {
-                      Symbol *check = check_bucket->symbol;
-                      if (check != entry && check->name && entry->name
-                          && strcmp (check->name, entry->name) == 0
-                          && check->node && !check->node->is_dead_code
-                          && check->node->type == NODE_ASSIGNMENT)
-                        {
-                          TinyOptAssignmentNode_t *assign
-                              = (TinyOptAssignmentNode_t *)check->node;
-                          if (assign->op == OP_ASSIGN)
-                            {
-                              if (entry->loop_hash && !check->loop_hash)
-                                break;
-                              entry->node->is_dead_code = 1;
-                              overwritten = 1;
-                            }
-                          break;
-                        }
-                      check_bucket = check_bucket->next;
-                    }
+                  entry->node->is_dead_code = 1;
+                  bucket = bucket->next;
+                  continue;
                 }
+            }
+
+          /* CASO 2–4: olhar o próximo símbolo */
+          SymbolBucket *next_bucket = bucket->next;
+          while (next_bucket)
+            {
+              Symbol *next_sym = next_bucket->symbol;
+
+              if (!next_sym || !next_sym->node || next_sym->node->is_dead_code)
+                {
+                  next_bucket = next_bucket->next;
+                  continue;
+                }
+
+              if (next_sym->node->type != NODE_ASSIGNMENT)
+                {
+                  next_bucket = next_bucket->next;
+                  continue;
+                }
+
+              TinyOptAssignmentNode_t *next_assign
+                  = (TinyOptAssignmentNode_t *)next_sym->node;
+
+              if (!assign->variable || !next_assign->variable
+                  || strcmp (assign->variable, next_assign->variable) != 0)
+                {
+                  next_bucket = next_bucket->next;
+                  continue;
+                }
+
+              Operator a = assign->op;
+              Operator b = next_assign->op;
+
+              /* CASO 2: sobrescrita simples (a = 1; a = 2;) */
+              if (b == OP_ASSIGN)
+                {
+                  entry->node->is_dead_code = 1;
+                  break;
+                }
+
+              /* CASO 3: ++ / -- */
+              if ((a == OP_INC && b == OP_DEC) || (a == OP_DEC && b == OP_INC))
+                {
+                  entry->node->is_dead_code = 1;
+                  break;
+                }
+
+              /* CASO 4: operações reversas aritméticas (ex: +=X / -=X) */
+              int dead = 0;
+
+              // Ambos devem ter valor literal
+              if (entry->value && next_sym->value
+                  && entry->value->type == VALUE_TYPE_INT
+                  && next_sym->value->type == VALUE_TYPE_INT)
+                {
+                  int v1 = entry->value->number;
+                  int v2 = next_sym->value->number;
+
+                  // Casos de cancelamento
+                  if (((a == OP_ADD_ASSIGN && b == OP_SUB_ASSIGN)
+                       || (a == OP_SUB_ASSIGN && b == OP_ADD_ASSIGN))
+                      && v1 == v2)
+                    dead = 1;
+
+                  else if (((a == OP_MUL_ASSIGN && b == OP_DIV_ASSIGN)
+                            || (a == OP_DIV_ASSIGN && b == OP_MUL_ASSIGN))
+                           && v1 == v2 && v1 != 0 && v1 != 1)
+                    dead = 1;
+
+                  else if (((a == OP_MOD_ASSIGN && b == OP_MUL_ASSIGN)
+                            || (a == OP_MUL_ASSIGN && b == OP_MOD_ASSIGN))
+                           && v1 == v2)
+                    dead = 1;
+                }
+
+              if (dead)
+                {
+                  entry->node->is_dead_code = 1;
+                  next_sym->node->is_dead_code = 1;
+                  break;
+                }
+
+              break;
             }
 
           bucket = bucket->next;
@@ -1340,6 +1516,7 @@ prune_list (TinyOptASTNode_t **head_ref)
           {
             TinyOptForNode_t *fn = (TinyOptForNode_t *)current;
             prune_children (fn->init);
+            prune_children (fn->condition);
             prune_children (fn->increment);
             prune_children (fn->body);
             if (fn->init)

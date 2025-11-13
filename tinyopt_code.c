@@ -283,6 +283,7 @@ emit_stmt (TinyOptASTNode_t *node)
     case NODE_FOR_STATEMENT:
       {
 	TinyOptForNode_t *f = (TinyOptForNode_t *) node;
+	if (f->body->is_dead_code) break;
 	printf ("for (");
 	if (f->init && f->init->type == NODE_ASSIGNMENT)
 	  {
