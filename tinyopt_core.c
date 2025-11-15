@@ -581,6 +581,75 @@ reachability_analysis (TinyOptASTNode_t *node, TinyOptStab_t *head,
   reachability_analysis (node->next, head, scope);
 }
 
+int
+liveness_exp (TinyOptASTNode_t *check, char *name)
+{
+  if (!check)
+    return 0;
+
+  if (check->type == NODE_IDENTIFIER)
+    {
+      TinyOptIdentifierNode_t *id = (TinyOptIdentifierNode_t *)check;
+      return strcmp (id->name, name) == 0;
+    }
+  else if (check->type == NODE_BINARY_OP)
+    {
+      TinyOptBinaryOpNode_t *bin = (TinyOptBinaryOpNode_t *)check;
+      return liveness_exp (bin->left, name)
+             || liveness_exp (bin->right, name) == 1;
+    }
+
+  return liveness_exp (check->next, name);
+}
+
+int
+liveness_var_stmt (Symbol *check, char *name)
+{
+  if (!check || !check->node || check->node->is_dead_code)
+    return 0;
+
+  if (check->node->type == NODE_ASSIGNMENT
+      || check->node->type == NODE_DECLARATION)
+    {
+      TinyOptASTNode_t *value = NULL;
+      /* Verifica AST de declaracoes */
+      if (check->node->type == NODE_DECLARATION)
+        {
+          TinyOptDeclarationNode_t *declaration
+              = (TinyOptDeclarationNode_t *)check->node;
+          if (declaration->initial_value)
+            {
+              value = (TinyOptASTNode_t *)declaration->initial_value;
+            }
+        }
+      else /* Verifica AST de atribuicoes */
+        {
+          TinyOptAssignmentNode_t *assig
+              = (TinyOptAssignmentNode_t *)check->node;
+          if (assig->value)
+            {
+              value = (TinyOptASTNode_t *)assig->value;
+            }
+        }
+      if (value)
+        {
+          int exp = liveness_exp (value, name);
+          if (exp)
+            {
+              return 1;
+            }
+        }
+    }
+
+  else if (check->node->type == NODE_IDENTIFIER
+           && strcmp (check->name, name) == 0)
+    {
+      return 1;
+    }
+
+  return 0;
+}
+
 void
 liveness (TinyOptStab_t *table)
 {
@@ -622,14 +691,13 @@ liveness (TinyOptStab_t *table)
                       while (check_bucket)
                         {
                           Symbol *check = check_bucket->symbol;
-                          if (check && check->node && check->name
-                              && check->node->type == NODE_IDENTIFIER
-                              && strcmp (check->name, entry->name) == 0
-                              && !check->node->is_dead_code)
+                          int stmt = liveness_var_stmt (check, entry->name);
+                          if (stmt)
                             {
                               used = 1;
                               break;
                             }
+
                           check_bucket = check_bucket->next;
                         }
                     }
@@ -661,14 +729,14 @@ liveness (TinyOptStab_t *table)
                       while (tmp)
                         {
                           Symbol *check = tmp->symbol;
-                          if (check && check->node && check->name
-                              && check->node->type == NODE_IDENTIFIER
-                              && strcmp (check->name, entry->name) == 0
-                              && !check->node->is_dead_code)
+
+                          int stmt = liveness_var_stmt (check, entry->name);
+                          if (stmt)
                             {
                               used = 1;
                               break;
                             }
+
                           tmp = tmp->next;
                         }
                     }
@@ -701,10 +769,9 @@ liveness (TinyOptStab_t *table)
 
                           if (start_checking)
                             {
-                              if (check->node && check->name
-                                  && check->node->type == NODE_IDENTIFIER
-                                  && strcmp (check->name, entry->name) == 0
-                                  && !check->node->is_dead_code)
+                              int stmt
+                                  = liveness_var_stmt (check, entry->name);
+                              if (stmt)
                                 {
                                   used = 1;
                                   break;
@@ -1083,7 +1150,7 @@ set_symtab (TinyOptASTNode_t *node, TinyOptStab_t *stab, uint64_t loop_hash,
             stab_insert (stab, sym, scope);
           }
 
-        set_symtab (decl->initial_value, stab, loop_hash, scope);
+        // set_symtab (decl->initial_value, stab, loop_hash, scope);
         break;
       }
 
@@ -1115,7 +1182,7 @@ set_symtab (TinyOptASTNode_t *node, TinyOptStab_t *stab, uint64_t loop_hash,
 
             stab_insert (stab, sym, scope);
           }
-        set_symtab (assign->value, stab, loop_hash, scope);
+        // set_symtab (assign->value, stab, loop_hash, scope);
         break;
       }
 
