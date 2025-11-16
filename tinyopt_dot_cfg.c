@@ -30,23 +30,10 @@
  *  along with this program.  if not, see <http://www.gnu.org/licenses/>.
  */
 #include "tinyopt_dot_cfg.h"
+#include "tinyopt_cfg.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-typedef struct CFGBuildResult
-{
-  int entry_id;
-  int exit_id;
-} CFGBuildResult;
-
-static int node_counter = 0;
-
-static int
-new_node_id ()
-{
-  return ++node_counter;
-}
 
 static void
 emit_node_label (int id, const char *label)
@@ -134,188 +121,9 @@ simple_stmt_label (TinyOptASTNode_t *node, char *tmp, size_t tmpsz)
     }
 }
 
-static CFGBuildResult build_cfg_list (TinyOptASTNode_t *list);
-
-static CFGBuildResult
-build_linear_stmt (TinyOptASTNode_t *stmt)
-{
-  CFGBuildResult r = { 0, 0 };
-  int id = new_node_id ();
-  char tmp[128];
-  const char *label = simple_stmt_label (stmt, tmp, sizeof (tmp));
-  emit_node_label (id, label);
-  r.entry_id = id;
-  r.exit_id = id;
-  return r;
-}
-
-static CFGBuildResult
-build_cfg_stmt (TinyOptASTNode_t *stmt)
-{
-  CFGBuildResult r = { 0, 0 };
-  if (!stmt)
-    return r;
-
-  switch (stmt->type)
-    {
-    case NODE_IF_STATEMENT:
-      {
-
-        TinyOptIfNode_t *i = (TinyOptIfNode_t *)stmt;
-        if (!i->condition && !i->then_statement && i->else_statement)
-          {
-            return build_cfg_stmt (i->else_statement);
-          }
-        if (!i->condition && i->then_statement && !i->else_statement)
-          {
-            return build_cfg_stmt (i->then_statement);
-          }
-        if (!i->then_statement && !i->else_statement)
-          {
-            CFGBuildResult empty = { 0, 0 };
-            return empty;
-          }
-
-        int cond = new_node_id ();
-        emit_node_label (cond, "if cond");
-        CFGBuildResult then_r = { 0, 0 };
-        CFGBuildResult else_r = { 0, 0 };
-        if (i->then_statement)
-          then_r = build_cfg_stmt (i->then_statement);
-        if (i->else_statement)
-          else_r = build_cfg_stmt (i->else_statement);
-        int join = new_node_id ();
-        emit_node_label (join, "join");
-        if (then_r.entry_id)
-          emit_edge (cond, then_r.entry_id, "true");
-        else
-          emit_edge (cond, join, "true");
-        if (else_r.entry_id)
-          emit_edge (cond, else_r.entry_id, "false");
-        else
-          emit_edge (cond, join, "false");
-        if (then_r.exit_id)
-          emit_edge (then_r.exit_id, join, NULL);
-        if (else_r.exit_id)
-          emit_edge (else_r.exit_id, join, NULL);
-        r.entry_id = cond;
-        r.exit_id = join;
-        return r;
-      }
-    case NODE_WHILE_STATEMENT:
-      {
-        TinyOptWhileNode_t *w = (TinyOptWhileNode_t *)stmt;
-        int cond = new_node_id ();
-        emit_node_label (cond, "while cond");
-        CFGBuildResult body_r = { 0, 0 };
-        if (w->body)
-          body_r = build_cfg_stmt (w->body);
-        int after = new_node_id ();
-        emit_node_label (after, "after while");
-        if (body_r.entry_id)
-          emit_edge (cond, body_r.entry_id, "true");
-        else
-          emit_edge (cond, cond, "true");
-        if (body_r.exit_id)
-          emit_edge (body_r.exit_id, cond, NULL);
-        emit_edge (cond, after, "false");
-        r.entry_id = cond;
-        r.exit_id = after;
-        return r;
-      }
-    case NODE_FOR_STATEMENT:
-      {
-        TinyOptForNode_t *f = (TinyOptForNode_t *)stmt;
-        CFGBuildResult init_r = { 0, 0 };
-        if (f->init)
-          init_r = build_cfg_stmt (f->init);
-        int cond = new_node_id ();
-        emit_node_label (cond, "for cond");
-        CFGBuildResult body_r = { 0, 0 };
-        if (f->body)
-          body_r = build_cfg_stmt (f->body);
-        CFGBuildResult inc_r = { 0, 0 };
-        if (f->increment)
-          inc_r = build_cfg_stmt (f->increment);
-        int after = new_node_id ();
-        emit_node_label (after, "after for");
-        // encadeamento
-        if (init_r.exit_id)
-          emit_edge (init_r.exit_id, cond, NULL);
-        else if (init_r.entry_id)
-          emit_edge (init_r.entry_id, cond, NULL);
-        if (body_r.entry_id)
-          emit_edge (cond, body_r.entry_id, "true");
-        else
-          emit_edge (cond, cond, "true");
-        if (body_r.exit_id)
-          {
-            if (inc_r.entry_id)
-              {
-                emit_edge (body_r.exit_id, inc_r.entry_id, NULL);
-                if (inc_r.exit_id)
-                  emit_edge (inc_r.exit_id, cond, NULL);
-                else
-                  emit_edge (inc_r.entry_id, cond, NULL);
-              }
-            else
-              {
-                emit_edge (body_r.exit_id, cond, NULL);
-              }
-          }
-        emit_edge (cond, after, "false");
-        r.entry_id = init_r.entry_id ? init_r.entry_id : cond;
-        r.exit_id = after;
-        return r;
-      }
-    case NODE_COMPOUND_STATEMENT:
-      {
-        TinyOptCompoundNode_t *c = (TinyOptCompoundNode_t *)stmt;
-        return build_cfg_list (c->statements);
-      }
-    case NODE_FUNCTION_DEF:
-      {
-        TinyOptFunctionDefNode_t *f = (TinyOptFunctionDefNode_t *)stmt;
-        CFGBuildResult body_r = { 0, 0 };
-        int entry = new_node_id ();
-        char tmp[128];
-        snprintf (tmp, sizeof (tmp), "func %s", f->name ? f->name : "");
-        emit_node_label (entry, tmp);
-        if (f->body)
-          body_r = build_cfg_stmt (f->body);
-        r.entry_id = entry;
-        r.exit_id = body_r.exit_id ? body_r.exit_id : entry;
-        if (body_r.entry_id)
-          emit_edge (entry, body_r.entry_id, NULL);
-        return r;
-      }
-    default:
-      return build_linear_stmt (stmt);
-    }
-}
-
-static CFGBuildResult
-build_cfg_list (TinyOptASTNode_t *list)
-{
-  CFGBuildResult r = { 0, 0 };
-  int prev_exit = 0;
-  for (TinyOptASTNode_t *cur = list; cur; cur = cur->next)
-    {
-      CFGBuildResult cr = build_cfg_stmt (cur);
-      if (!r.entry_id)
-        r.entry_id = cr.entry_id;
-      if (prev_exit && cr.entry_id)
-        emit_edge (prev_exit, cr.entry_id, NULL);
-      prev_exit = cr.exit_id ? cr.exit_id : prev_exit;
-      r.exit_id = prev_exit;
-    }
-  return r;
-}
-
 void
 print_cfg_dot (TinyOptASTNode_t *ast)
 {
-  node_counter = 0;
   printf ("digraph CFG {\n");
   printf ("  node [shape=box];\n");
   if (!ast)
@@ -323,16 +131,56 @@ print_cfg_dot (TinyOptASTNode_t *ast)
       printf ("}\n");
       return;
     }
-  if (ast->type == NODE_PROGRAM)
+
+  TinyOptCFG_t *cfg = tinyopt_cfg_build (ast);
+  if (!cfg)
     {
-      TinyOptProgramNode_t *p = (TinyOptProgramNode_t *)ast;
-      CFGBuildResult r = build_cfg_list (p->statements);
-      (void)r;
+      printf ("}\n");
+      return;
     }
-  else
+
+  /* Nós */
+  for (TinyOptCFGNode_t *n = cfg->nodes; n; n = n->next_in_cfg)
     {
-      CFGBuildResult r = build_cfg_stmt (ast);
-      (void)r;
+      char tmp[128];
+      const char *label;
+
+      if (n->ast)
+        {
+          /* Reaproveita a lógica de rotulagem simples já usada
+           * anteriormente, agora baseada no nó da AST associado
+           * ao nó do CFG. */
+          label = simple_stmt_label (n->ast, tmp, sizeof (tmp));
+        }
+      else
+        {
+          snprintf (tmp, sizeof (tmp), "n%d", n->id);
+          label = tmp;
+        }
+
+      emit_node_label (n->id, label);
     }
+
+  /* Arestas */
+  for (TinyOptCFGNode_t *n = cfg->nodes; n; n = n->next_in_cfg)
+    {
+      if (n->succ_true)
+        {
+          const char *label = NULL;
+          if (n->succ_false)
+            label = "true";
+          emit_edge (n->id, n->succ_true->id, label);
+        }
+
+      if (n->succ_false)
+        {
+          const char *label = NULL;
+          if (n->succ_true)
+            label = "false";
+          emit_edge (n->id, n->succ_false->id, label);
+        }
+    }
+
   printf ("}\n");
+  tinyopt_cfg_free (cfg);
 }

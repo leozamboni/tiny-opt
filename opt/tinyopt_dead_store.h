@@ -34,6 +34,16 @@
 
 #include "tinyopt.h"
 
-void tinyopt_dead_store (TinyOptStab_t *table);
+/* Eliminação de stores mortos baseada em CFG.
+ *
+ * Usa o grafo de fluxo de controle para identificar:
+ *  - auto-atribuições triviais (x = x;)
+ *  - atribuições imediatamente sobrescritas no mesmo ramo de controle
+ *    (x = a; x = b;), marcando a primeira como código morto.
+ *
+ * O parâmetro da tabela de símbolos é mantido para futura extensão
+ * (por exemplo, análise de padrões aritméticos mais complexos).
+ */
+void tinyopt_dead_store (TinyOptASTNode_t *ast, TinyOptStab_t *table);
 
 #endif

@@ -32,6 +32,7 @@
 #include "tinyopt_liveness.h"
 #include "tinyopt_cfg.h"
 #include "tinyopt_stab.h"
+#include "tinyopt_core.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -52,6 +53,7 @@ static void varset_minus (VarSet *dst, VarSet *remove);
 static void collect_uses_expr (TinyOptASTNode_t *node, VarSet *use);
 static void compute_use_def_for_node (TinyOptCFGNode_t *n, VarSet *use,
                                       VarSet *def);
+static int run_liveness_analysis (TinyOptASTNode_t *ast);
 
 void
 tinyopt_liveness (TinyOptASTNode_t *ast)
@@ -59,12 +61,38 @@ tinyopt_liveness (TinyOptASTNode_t *ast)
   if (!ast)
     return;
 
+  /* Repete a análise de liveness até que não haja mais variáveis mortas. */
+  int dead_count;
+  int max_rounds = 100; /* Limite de segurança para evitar loops infinitos */
+  int round = 0;
+
+  do
+    {
+      dead_count = run_liveness_analysis (ast);
+      if (dead_count > 0)
+        {
+          /* Remove o código morto marcado antes da próxima iteração. */
+          tinyopt_remove_dead_code (ast);
+        }
+      round++;
+    }
+  while (dead_count > 0 && round < max_rounds);
+}
+
+/* Executa uma única passada da análise de liveness e retorna o número de
+ * atribuições mortas encontradas. */
+static int
+run_liveness_analysis (TinyOptASTNode_t *ast)
+{
+  if (!ast)
+    return 0;
+
   TinyOptCFG_t *cfg = tinyopt_cfg_build (ast);
   if (!cfg || !cfg->nodes)
     {
       if (cfg)
         tinyopt_cfg_free (cfg);
-      return;
+      return 0;
     }
 
   /* Conta nós e determina o maior id para dimensionar vetores por id-1. */
@@ -80,7 +108,7 @@ tinyopt_liveness (TinyOptASTNode_t *ast)
   if (max_id <= 0)
     {
       tinyopt_cfg_free (cfg);
-      return;
+      return 0;
     }
 
   size_t n_nodes = (size_t)max_id;
@@ -97,7 +125,7 @@ tinyopt_liveness (TinyOptASTNode_t *ast)
       free (in);
       free (out);
       tinyopt_cfg_free (cfg);
-      return;
+      return 0;
     }
 
   for (size_t i = 0; i < n_nodes; i++)
@@ -108,10 +136,13 @@ tinyopt_liveness (TinyOptASTNode_t *ast)
       varset_init (&out[i]);
     }
 
-  /* Computa USE/DEF de cada nó. */
+  /* Computa USE/DEF de cada nó (ignorando nós já marcados como mortos). */
   for (TinyOptCFGNode_t *n = cfg->nodes; n; n = n->next_in_cfg)
     {
       if (n->id <= 0)
+        continue;
+      /* Ignora nós já marcados como código morto. */
+      if (n->ast && n->ast->is_dead_code)
         continue;
       size_t idx = (size_t)(n->id - 1);
       compute_use_def_for_node (n, &use[idx], &def[idx]);
@@ -130,17 +161,17 @@ tinyopt_liveness (TinyOptASTNode_t *ast)
         {
           if (n->id <= 0)
             continue;
+          /* Ignora nós já marcados como código morto. */
+          if (n->ast && n->ast->is_dead_code)
+            continue;
           size_t idx = (size_t)(n->id - 1);
 
           /* OUT[n] = união dos IN dos sucessores */
           VarSet new_out;
           varset_init (&new_out);
 
-          // printf ("%d : %d\n", idx, n->ast->type);
-
           if (n->succ_true && n->succ_true->id > 0)
             {
-              // printf("n->succ_true->id %d\n", n->succ_true->id);
               size_t tidx = (size_t)(n->succ_true->id - 1);
               varset_union_into (&new_out, &in[tidx]);
             }
@@ -178,46 +209,13 @@ tinyopt_liveness (TinyOptASTNode_t *ast)
               varset_free (&new_out);
             }
 
-          // if (n->ast)
-          //   {
-          //     TinyOptASTNode_t *node = n->ast;
-          //     if (node->type == NODE_ASSIGNMENT)
-          //       {
-          //         TinyOptDeclarationNode_t *d
-          //             = (TinyOptDeclarationNode_t *)node;
-          //         uint64_t h = stab_hash_string (d->name);
-          //         if (!varset_contains (&out[idx], h))
-          //           {
-          //             varset_minus (&use[idx], &def[idx]);
-          //           }
-          //       }
-          //   }
-
           /* IN[n] = USE[n] ∪ (OUT[n] – DEF[n]) */
           VarSet new_in;
           varset_init (&new_in);
 
           varset_union_into (&new_in, &out[idx]);
           varset_minus (&new_in, &def[idx]);
-          // varset_minus (&use[idx], &def[idx]);
           varset_union_into (&new_in, &use[idx]);
-
-          // printf ("USE[%zu] = { ", idx);
-
-          // for (size_t i = 0; i < use[idx].size; i++)
-          //   {
-          //     printf ("%d ", use[idx].data[i]);
-          //   }
-
-          // printf ("}\n");
-          // printf ("DEF[%zu] = { ", idx);
-
-          // for (size_t i = 0; i < def[idx].size; i++)
-          //   {
-          //     printf ("%d ", def[idx].data[i]);
-          //   }
-
-          // printf ("}\n");
 
           int in_changed = 0;
           if (new_in.size != in[idx].size)
@@ -246,8 +244,6 @@ tinyopt_liveness (TinyOptASTNode_t *ast)
               varset_free (&new_in);
             }
 
-          // printf ("out_changed %d | in_changed %d\n", out_changed,
-          // in_changed);
           if (out_changed || in_changed)
             changed = 1;
         }
@@ -264,14 +260,21 @@ tinyopt_liveness (TinyOptASTNode_t *ast)
     {
       if (!n->ast || n->id <= 0)
         continue;
+      /* Ignora nós já marcados como código morto. */
+      if (n->ast->is_dead_code)
+        continue;
       // printf("%d: %d\n", n->id, n->ast->type);
       size_t idx = (size_t)(n->id - 1);
       varset_union_into (&used_vars, &use[idx]);
     }
 
+  int dead_count = 0;
   for (TinyOptCFGNode_t *n = cfg->nodes; n; n = n->next_in_cfg)
     {
       if (!n->ast || n->id <= 0)
+        continue;
+      /* Ignora nós já marcados como código morto. */
+      if (n->ast->is_dead_code)
         continue;
 
       TinyOptASTNode_t *node = n->ast;
@@ -287,6 +290,7 @@ tinyopt_liveness (TinyOptASTNode_t *ast)
               if (!varset_contains (&used_vars, h))
                 {
                   node->is_dead_code = 1;
+                  dead_count++;
                   continue;
                 }
             }
@@ -311,8 +315,19 @@ tinyopt_liveness (TinyOptASTNode_t *ast)
       if (!varset_contains (&out[idx], var_hash))
         {
           node->is_dead_code = 1;
+          dead_count++;
         }
     }
+
+  for (size_t i = 0; i < n_nodes; i++)
+    {
+      varset_free (&use[i]);
+      varset_free (&def[i]);
+      varset_free (&in[i]);
+      varset_free (&out[i]);
+    }
+
+  varset_free (&used_vars);
 
   for (size_t i = 0; i < n_nodes; i++)
     {
@@ -328,6 +343,8 @@ tinyopt_liveness (TinyOptASTNode_t *ast)
   free (out);
 
   tinyopt_cfg_free (cfg);
+
+  return dead_count;
 }
 
 static void
@@ -551,3 +568,4 @@ compute_use_def_for_node (TinyOptCFGNode_t *n, VarSet *use, VarSet *def)
       break;
     }
 }
+

@@ -29,11 +29,17 @@
  *  you should have received a copy of the gnu general public license
  *  along with this program.  if not, see <http://www.gnu.org/licenses/>.
  */
-#ifndef TINYOPT_CFG
-#define TINYOPT_CFG
+#ifndef TINYOPT_DOT_CFG_H
+#define TINYOPT_DOT_CFG_H
 
 #include "tinyopt_ast.h"
 
-void print_cfg_dot (TinyOptASTNode_t * ast);
+/* Imprime o CFG em formato DOT a partir da AST.
+ *
+ * Internamente, usa a mesma estrutura de CFG definida em tinyopt_cfg.h
+ * (TinyOptCFG_t / TinyOptCFGNode_t). Nenhum grafo alternativo é criado
+ * aqui – apenas percorremos o CFG existente e emitimos o código DOT.
+ */
+void print_cfg_dot (TinyOptASTNode_t *ast);
 
-#endif // TINYOPT_CFG
+#endif // TINYOPT_DOT_CFG_H
