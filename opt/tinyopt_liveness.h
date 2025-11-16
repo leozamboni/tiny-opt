@@ -32,9 +32,14 @@
 #ifndef TINYOPT_LIVENESS
 #define TINYOPT_LIVENESS
 
-#include "tinyopt.h"
-#include <inttypes.h>
+#include "tinyopt_ast.h"
 
-void tinyopt_liveness (TinyOptStab_t *table);
+/* Análise de liveness baseada em CFG.
+ *
+ * A função constrói internamente o CFG a partir da AST e marca como
+ * `is_dead_code = 1` as declarações/atribuições cujos valores nunca são
+ * utilizados em nenhum caminho de execução.
+ */
+void tinyopt_liveness (TinyOptASTNode_t *ast);
 
 #endif

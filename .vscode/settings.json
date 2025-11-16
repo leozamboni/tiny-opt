@@ -30,6 +30,11 @@
         "tinyopt.h": "c",
         "tinyopt_dead_store.h": "c",
         "tinyopt_empty_blocks.h": "c",
-        "tinyopt_reachability.h": "c"
+        "tinyopt_reachability.h": "c",
+        "tinyopt_code.h": "c",
+        "bitset": "c",
+        "string_view": "c",
+        "initializer_list": "c",
+        "span": "c"
     }
 }

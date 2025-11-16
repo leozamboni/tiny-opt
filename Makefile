@@ -6,6 +6,7 @@ CORE_SRC = \
     tinyopt_stab.c \
     tinyopt_core.c \
     tinyopt_code.c \
+    tinyopt_dot_cfg.c \
     tinyopt_cfg.c
 OPT_SRC = $(wildcard opt/*.c)
 GEN_SRC = parser.tab.c lex.yy.c
@@ -34,3 +35,6 @@ clean:
 	rm -f $(OUT) parser.tab.* lex.yy.c
 	rm -f *.c~ *.h~ opt/*.c~ opt/*.h~
 	rm -f *.puml
+
+cfg:
+	@bear -- make

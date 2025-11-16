@@ -34,7 +34,6 @@
 
 #include "tinyopt.h"
 #include "tinyopt_stab.h"
-#include "opt/tinyopt_dead_store.h"
 #include "opt/tinyopt_empty_blocks.h"
 #include "opt/tinyopt_folding.h"
 #include "opt/tinyopt_liveness.h"

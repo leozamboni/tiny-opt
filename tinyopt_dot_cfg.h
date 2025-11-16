@@ -14,7 +14,7 @@
  *⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⡎⠀⠀⠀⢸⠏⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
  *⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⠻⠿⠶⠂⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠛⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
  *  TinyOpt
- *  Copyright (c) 2025 leozamboni
+ *  Copyright (c) 2025 leozamboni 
  *
  *  this program is free software: you can redistribute it and/or modify
  *  it under the terms of the gnu general public license as published by
@@ -29,11 +29,17 @@
  *  you should have received a copy of the gnu general public license
  *  along with this program.  if not, see <http://www.gnu.org/licenses/>.
  */
-#ifndef TINYOPT_DEAD_STORE
-#define TINYOPT_DEAD_STORE
+#ifndef TINYOPT_DOT_CFG_H
+#define TINYOPT_DOT_CFG_H
 
-#include "tinyopt.h"
+#include "tinyopt_ast.h"
 
-void tinyopt_dead_store (TinyOptStab_t *table);
+/* Imprime o CFG em formato DOT a partir da AST.
+ *
+ * Internamente, usa a mesma estrutura de CFG definida em tinyopt_cfg.h
+ * (TinyOptCFG_t / TinyOptCFGNode_t). Nenhum grafo alternativo é criado
+ * aqui – apenas percorremos o CFG existente e emitimos o código DOT.
+ */
+void print_cfg_dot (TinyOptASTNode_t *ast);
 
-#endif
+#endif // TINYOPT_DOT_CFG_H
