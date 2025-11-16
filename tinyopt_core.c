@@ -52,7 +52,6 @@ tinyopt_optimize (TinyOpt_t **tinyopt)
 
   tinyopt_reachability ((*tinyopt)->ast, (*tinyopt)->stab, "global");
   tinyopt_liveness ((*tinyopt)->ast);
-  // tinyopt_dead_store ((*tinyopt)->ast, (*tinyopt)->stab);
   tinyopt_empty_blocks ((*tinyopt)->ast);
 
   tinyopt_remove_dead_code ((*tinyopt)->ast);

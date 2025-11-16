@@ -31,8 +31,8 @@
  */
 #include "tinyopt_liveness.h"
 #include "tinyopt_cfg.h"
-#include "tinyopt_stab.h"
 #include "tinyopt_core.h"
+#include "tinyopt_stab.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -54,6 +54,8 @@ static void collect_uses_expr (TinyOptASTNode_t *node, VarSet *use);
 static void compute_use_def_for_node (TinyOptCFGNode_t *n, VarSet *use,
                                       VarSet *def);
 static int run_liveness_analysis (TinyOptASTNode_t *ast);
+static void collect_global_vars_used_in_function (TinyOptASTNode_t *func_body,
+                                                  VarSet *global_uses);
 
 void
 tinyopt_liveness (TinyOptASTNode_t *ast)
@@ -61,22 +63,75 @@ tinyopt_liveness (TinyOptASTNode_t *ast)
   if (!ast)
     return;
 
-  /* Repete a análise de liveness até que não haja mais variáveis mortas. */
-  int dead_count;
-  int max_rounds = 100; /* Limite de segurança para evitar loops infinitos */
-  int round = 0;
-
-  do
+  if (ast->type == NODE_PROGRAM)
     {
-      dead_count = run_liveness_analysis (ast);
-      if (dead_count > 0)
+      TinyOptProgramNode_t *prog = (TinyOptProgramNode_t *)ast;
+
+      /* Primeiro, coleta todas as variáveis globais usadas em todas as
+       * funções. */
+      VarSet global_uses;
+      varset_init (&global_uses);
+
+      for (TinyOptASTNode_t *stmt = prog->statements; stmt; stmt = stmt->next)
         {
-          /* Remove o código morto marcado antes da próxima iteração. */
-          tinyopt_remove_dead_code (ast);
+          if (stmt->type == NODE_FUNCTION_DEF)
+            {
+              TinyOptFunctionDefNode_t *func
+                  = (TinyOptFunctionDefNode_t *)stmt;
+              if (func->body)
+                {
+                  collect_global_vars_used_in_function (func->body,
+                                                        &global_uses);
+                }
+            }
         }
-      round++;
+
+      /* Agora, itera sobre cada função para fazer liveness. */
+      for (TinyOptASTNode_t *stmt = prog->statements; stmt; stmt = stmt->next)
+        {
+          if (stmt->type == NODE_FUNCTION_DEF)
+            {
+              TinyOptFunctionDefNode_t *func
+                  = (TinyOptFunctionDefNode_t *)stmt;
+              if (func->body)
+                {
+                  /* Executa liveness apenas no corpo da função. */
+                  int dead_count;
+                  int max_rounds = 100;
+                  int round = 0;
+
+                  do
+                    {
+                      dead_count = run_liveness_analysis (func->body);
+                      if (dead_count > 0)
+                        {
+                          tinyopt_remove_dead_code (func->body);
+                        }
+                      round++;
+                    }
+                  while (dead_count > 0 && round < max_rounds);
+                }
+            }
+          else
+            {
+              /* Analisa declarações globais: marca como mortas se não são
+               * usadas. */
+              TinyOptDeclarationNode_t *decl
+                  = (TinyOptDeclarationNode_t *)stmt;
+              if (decl->name)
+                {
+                  uint64_t h = stab_hash_string (decl->name);
+                  if (!varset_contains (&global_uses, h))
+                    {
+                      stmt->is_dead_code = 1;
+                    }
+                }
+            }
+        }
+
+      varset_free (&global_uses);
+      return;
     }
-  while (dead_count > 0 && round < max_rounds);
 }
 
 /* Executa uma única passada da análise de liveness e retorna o número de
@@ -263,7 +318,6 @@ run_liveness_analysis (TinyOptASTNode_t *ast)
       /* Ignora nós já marcados como código morto. */
       if (n->ast->is_dead_code)
         continue;
-      // printf("%d: %d\n", n->id, n->ast->type);
       size_t idx = (size_t)(n->id - 1);
       varset_union_into (&used_vars, &use[idx]);
     }
@@ -569,3 +623,200 @@ compute_use_def_for_node (TinyOptCFGNode_t *n, VarSet *use, VarSet *def)
     }
 }
 
+/* Coleta todas as variáveis (identificadores) usadas em uma função.
+ * Esta função é usada para determinar quais variáveis globais são usadas. */
+static void
+collect_global_vars_used_in_function (TinyOptASTNode_t *func_body,
+                                      VarSet *global_uses)
+{
+  if (!func_body)
+    return;
+
+  switch (func_body->type)
+    {
+    case NODE_IDENTIFIER:
+      {
+        TinyOptIdentifierNode_t *id = (TinyOptIdentifierNode_t *)func_body;
+        if (id->name)
+          {
+            uint64_t h = stab_hash_string (id->name);
+            varset_add (global_uses, h);
+          }
+        break;
+      }
+    case NODE_DECLARATION:
+      {
+        /* Declaração local: coleta variáveis usadas no valor inicial,
+         * mas não adiciona a própria variável declarada (é local). */
+        TinyOptDeclarationNode_t *decl = (TinyOptDeclarationNode_t *)func_body;
+        if (decl->initial_value)
+          {
+            collect_global_vars_used_in_function (decl->initial_value,
+                                                  global_uses);
+          }
+        /* Continua para processar next. */
+        collect_global_vars_used_in_function (func_body->next, global_uses);
+        break;
+      }
+    case NODE_ASSIGNMENT:
+      {
+        TinyOptAssignmentNode_t *assign = (TinyOptAssignmentNode_t *)func_body;
+        /* A variável atribuída pode ser global ou local, mas vamos coletá-la
+         * de qualquer forma. Se for local, não causará problema porque
+         * verificaremos se a declaração global existe. */
+        if (assign->variable)
+          {
+            uint64_t h = stab_hash_string (assign->variable);
+            varset_add (global_uses, h);
+          }
+        if (assign->value)
+          {
+            collect_global_vars_used_in_function (assign->value, global_uses);
+          }
+        collect_global_vars_used_in_function (func_body->next, global_uses);
+        break;
+      }
+    case NODE_RETURN:
+      {
+        TinyOptReturnNode_t *ret = (TinyOptReturnNode_t *)func_body;
+        if (ret->value)
+          {
+            collect_global_vars_used_in_function (ret->value, global_uses);
+          }
+        collect_global_vars_used_in_function (func_body->next, global_uses);
+        break;
+      }
+    case NODE_IF_STATEMENT:
+      {
+        TinyOptIfNode_t *if_node = (TinyOptIfNode_t *)func_body;
+        if (if_node->condition)
+          {
+            collect_global_vars_used_in_function (if_node->condition,
+                                                  global_uses);
+          }
+        if (if_node->then_statement)
+          {
+            collect_global_vars_used_in_function (if_node->then_statement,
+                                                  global_uses);
+          }
+        if (if_node->else_statement)
+          {
+            collect_global_vars_used_in_function (if_node->else_statement,
+                                                  global_uses);
+          }
+        collect_global_vars_used_in_function (func_body->next, global_uses);
+        break;
+      }
+    case NODE_WHILE_STATEMENT:
+      {
+        TinyOptWhileNode_t *while_node = (TinyOptWhileNode_t *)func_body;
+        if (while_node->condition)
+          {
+            collect_global_vars_used_in_function (while_node->condition,
+                                                  global_uses);
+          }
+        if (while_node->body)
+          {
+            collect_global_vars_used_in_function (while_node->body,
+                                                  global_uses);
+          }
+        collect_global_vars_used_in_function (func_body->next, global_uses);
+        break;
+      }
+    case NODE_FOR_STATEMENT:
+      {
+        TinyOptForNode_t *for_node = (TinyOptForNode_t *)func_body;
+        if (for_node->init)
+          {
+            collect_global_vars_used_in_function (for_node->init, global_uses);
+          }
+        if (for_node->condition)
+          {
+            collect_global_vars_used_in_function (for_node->condition,
+                                                  global_uses);
+          }
+        if (for_node->increment)
+          {
+            collect_global_vars_used_in_function (for_node->increment,
+                                                  global_uses);
+          }
+        if (for_node->body)
+          {
+            collect_global_vars_used_in_function (for_node->body, global_uses);
+          }
+        collect_global_vars_used_in_function (func_body->next, global_uses);
+        break;
+      }
+    case NODE_COMPOUND_STATEMENT:
+      {
+        TinyOptCompoundNode_t *compound = (TinyOptCompoundNode_t *)func_body;
+        if (compound->statements)
+          {
+            collect_global_vars_used_in_function (compound->statements,
+                                                  global_uses);
+          }
+        collect_global_vars_used_in_function (func_body->next, global_uses);
+        break;
+      }
+    case NODE_FUNCTION_CALL:
+      {
+        TinyOptFunctionCallNode_t *call
+            = (TinyOptFunctionCallNode_t *)func_body;
+        if (call->arguments)
+          {
+            collect_global_vars_used_in_function (call->arguments,
+                                                  global_uses);
+          }
+        collect_global_vars_used_in_function (func_body->next, global_uses);
+        break;
+      }
+    case NODE_BINARY_OP:
+      {
+        TinyOptBinaryOpNode_t *bin = (TinyOptBinaryOpNode_t *)func_body;
+        if (bin->left)
+          {
+            collect_global_vars_used_in_function (bin->left, global_uses);
+          }
+        if (bin->right)
+          {
+            collect_global_vars_used_in_function (bin->right, global_uses);
+          }
+        collect_global_vars_used_in_function (func_body->next, global_uses);
+        break;
+      }
+    case NODE_UNARY_OP:
+      {
+        TinyOptUnaryOpNode_t *unary = (TinyOptUnaryOpNode_t *)func_body;
+        if (unary->operand)
+          {
+            collect_global_vars_used_in_function (unary->operand, global_uses);
+          }
+        collect_global_vars_used_in_function (func_body->next, global_uses);
+        break;
+      }
+    case NODE_CONDITION:
+      {
+        TinyOptConditionNode_t *cond = (TinyOptConditionNode_t *)func_body;
+        if (cond->left)
+          {
+            collect_global_vars_used_in_function (cond->left, global_uses);
+          }
+        if (cond->right)
+          {
+            collect_global_vars_used_in_function (cond->right, global_uses);
+          }
+        collect_global_vars_used_in_function (func_body->next, global_uses);
+        break;
+      }
+    case NODE_NUMBER:
+    case NODE_CHAR_LITERAL:
+    case NODE_STRING_LITERAL:
+      /* Não contêm variáveis. */
+      collect_global_vars_used_in_function (func_body->next, global_uses);
+      break;
+    default:
+      /* Para outros tipos, apenas processa next. */
+      collect_global_vars_used_in_function (func_body->next, global_uses);
+      break;
+    }
+}

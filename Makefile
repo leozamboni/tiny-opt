@@ -35,3 +35,6 @@ clean:
 	rm -f $(OUT) parser.tab.* lex.yy.c
 	rm -f *.c~ *.h~ opt/*.c~ opt/*.h~
 	rm -f *.puml
+
+cfg:
+	@bear -- make

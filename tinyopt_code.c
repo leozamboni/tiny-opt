@@ -32,8 +32,8 @@
 #include "tinyopt_code.h"
 #include <stdio.h>
 
-static void emit_stmt_list (TinyOptASTNode_t * node);
-static void emit_stmt (TinyOptASTNode_t * node);
+static void emit_stmt_list (TinyOptASTNode_t * node, int indent);
+static void emit_stmt (TinyOptASTNode_t * node, int indent);
 static void emit_expr (TinyOptASTNode_t * node);
 static const char *dtype_to_str (DataType t);
 static const char *op_to_assign_str (Operator op);
@@ -54,20 +54,20 @@ print_optimized_code (TinyOptASTNode_t *ast)
   if (ast->type == NODE_PROGRAM)
     {
       TinyOptProgramNode_t *p = (TinyOptProgramNode_t *) ast;
-      emit_stmt_list (p->statements);
+      emit_stmt_list (p->statements, 0);
     }
   else
     {
-      emit_stmt (ast);
+      emit_stmt (ast, 0);
     }
 }
 
 static void
-emit_stmt_list (TinyOptASTNode_t *node)
+emit_stmt_list (TinyOptASTNode_t *node, int indent)
 {
   for (TinyOptASTNode_t * cur = node; cur; cur = cur->next)
     {
-      emit_stmt (cur);
+      emit_stmt (cur, indent);
     }
 }
 
@@ -151,14 +151,14 @@ emit_block (TinyOptASTNode_t *node, int indent)
   for (TinyOptASTNode_t * cur = node; cur; cur = cur->next)
     {
       emit_indent (indent);
-      emit_stmt (cur);
+      emit_stmt (cur, indent);
     }
   emit_indent (indent - 1);
   printf ("}\n");
 }
 
 static void
-emit_stmt (TinyOptASTNode_t *node)
+emit_stmt (TinyOptASTNode_t *node, int indent)
 {
   if (!node)
     return;
@@ -212,11 +212,11 @@ emit_stmt (TinyOptASTNode_t *node)
 	    if (i->then_statement->type == NODE_COMPOUND_STATEMENT)
 	      { 
 		emit_stmt_list (((TinyOptCompoundNode_t *) i->then_statement)->
-				statements);
+				statements, indent);
 	      }
 	    else
 	      {
-		emit_stmt (i->then_statement);
+		emit_stmt (i->then_statement, indent);
 	      }
 	    break;
 	  }
@@ -225,39 +225,60 @@ emit_stmt (TinyOptASTNode_t *node)
 	    if (i->else_statement->type == NODE_COMPOUND_STATEMENT)
 	      {
 		emit_stmt_list (((TinyOptCompoundNode_t *) i->else_statement)->
-				statements);
+				statements, indent);
 	      }
 	    else
 	      {
-		emit_stmt (i->else_statement);
+		emit_stmt (i->else_statement, indent);
 	      }
 	    break;
 	  }
 
-	if (i->then_statement
-	    && i->then_statement->type == NODE_COMPOUND_STATEMENT)
+	if (i->condition && i->then_statement)
 	  {
 	    printf ("if (");
 	    emit_expr (i->condition);
 	    printf (") ");
-	    emit_block (((TinyOptCompoundNode_t *) i->then_statement)->statements, 1);
-	  }
-	if (i->else_statement)
-	  {
-	    if (i->then_statement)
+	    if (i->then_statement->type == NODE_COMPOUND_STATEMENT)
 	      {
-		printf ("else ");
-	      }
-	    if (i->else_statement->type == NODE_COMPOUND_STATEMENT)
-	      {
-		emit_block (((TinyOptCompoundNode_t *) i->else_statement)->statements,
-			    1);
+		emit_block (((TinyOptCompoundNode_t *) i->then_statement)->statements, indent + 1);
 	      }
 	    else
 	      {
-		printf ("{\n  ");
-		emit_stmt (i->else_statement);
+		printf ("{\n");
+		emit_indent (indent + 1);
+		emit_stmt (i->then_statement, indent + 1);
+		emit_indent (indent);
 		printf ("}\n");
+	      }
+	    if (i->else_statement)
+	      {
+		printf ("else ");
+		if (i->else_statement->type == NODE_COMPOUND_STATEMENT)
+		  {
+		    emit_block (((TinyOptCompoundNode_t *) i->else_statement)->statements,
+				indent + 1);
+		  }
+		else
+		  {
+		    printf ("{\n");
+		    emit_indent (indent + 1);
+		    emit_stmt (i->else_statement, indent + 1);
+		    emit_indent (indent);
+		    printf ("}\n");
+		  }
+	      }
+	  }
+	else if (i->else_statement)
+	  {
+	    if (i->else_statement->type == NODE_COMPOUND_STATEMENT)
+	      {
+		emit_block (((TinyOptCompoundNode_t *) i->else_statement)->statements,
+			    indent);
+	      }
+	    else
+	      {
+		emit_stmt (i->else_statement, indent);
 	      }
 	  }
 	break;
@@ -270,12 +291,14 @@ emit_stmt (TinyOptASTNode_t *node)
 	printf (") ");
 	if (w->body && w->body->type == NODE_COMPOUND_STATEMENT)
 	  {
-	    emit_block (((TinyOptCompoundNode_t *) w->body)->statements, 1);
+	    emit_block (((TinyOptCompoundNode_t *) w->body)->statements, indent + 1);
 	  }
-	else
+	else if (w->body)
 	  {
-	    printf ("{\n  ");
-	    emit_stmt (w->body);
+	    printf ("{\n");
+	    emit_indent (indent + 1);
+	    emit_stmt (w->body, indent + 1);
+	    emit_indent (indent);
 	    printf ("}\n");
 	  }
 	break;
@@ -328,12 +351,14 @@ emit_stmt (TinyOptASTNode_t *node)
 	printf (") ");
 	if (f->body && f->body->type == NODE_COMPOUND_STATEMENT)
 	  {
-	    emit_block (((TinyOptCompoundNode_t *) f->body)->statements, 1);
+	    emit_block (((TinyOptCompoundNode_t *) f->body)->statements, indent + 1);
 	  }
-	else
+	else if (f->body)
 	  {
-	    printf ("{\n  ");
-	    emit_stmt (f->body);
+	    printf ("{\n");
+	    emit_indent (indent + 1);
+	    emit_stmt (f->body, indent + 1);
+	    emit_indent (indent);
 	    printf ("}\n");
 	  }
 	break;
@@ -341,7 +366,7 @@ emit_stmt (TinyOptASTNode_t *node)
     case NODE_COMPOUND_STATEMENT:
       {
 	TinyOptCompoundNode_t *c = (TinyOptCompoundNode_t *) node;
-	emit_block (c->statements, 1);
+	emit_block (c->statements, indent);
 	break;
       }
     case NODE_RETURN:
@@ -373,12 +398,14 @@ emit_stmt (TinyOptASTNode_t *node)
 	printf (") ");
 	if (f->body && f->body->type == NODE_COMPOUND_STATEMENT)
 	  {
-	    emit_block (((TinyOptCompoundNode_t *) f->body)->statements, 0);
+	    emit_block (((TinyOptCompoundNode_t *) f->body)->statements, 1);
 	  }
-	else
+	else if (f->body)
 	  {
-	    printf ("{\n  ");
-	    emit_stmt (f->body);
+	    printf ("{\n");
+	    emit_indent (1);
+	    emit_stmt (f->body, 1);
+	    emit_indent (0);
 	    printf ("}\n");
 	  }
 	break;
@@ -466,7 +493,6 @@ emit_expr (TinyOptASTNode_t *node)
 {
   if (!node)
     {
-      printf ("");
       return;
     }
   switch (node->type)
