@@ -30,237 +30,524 @@
  *  along with this program.  if not, see <http://www.gnu.org/licenses/>.
  */
 #include "tinyopt_liveness.h"
+#include "tinyopt_cfg.h"
+#include "tinyopt_stab.h"
+#include <stdlib.h>
+#include <string.h>
 
-int liveness_exp (TinyOptASTNode_t *check, char *name);
-int liveness_var_stmt (Symbol *check, char *name);
-int liveness_seek_usage (SymbolBucket *check_bucket, char *name);
+typedef struct
+{
+  uint64_t *data;
+  size_t size;
+  size_t capacity;
+} VarSet;
+
+static void varset_init (VarSet *s);
+static void varset_free (VarSet *s);
+static int varset_contains (VarSet *s, uint64_t v);
+static int varset_add (VarSet *s, uint64_t v);
+static int varset_union_into (VarSet *dst, VarSet *src);
+static void varset_minus (VarSet *dst, VarSet *remove);
+
+static void collect_uses_expr (TinyOptASTNode_t *node, VarSet *use);
+static void compute_use_def_for_node (TinyOptCFGNode_t *n, VarSet *use,
+                                      VarSet *def);
 
 void
-tinyopt_liveness (TinyOptStab_t *table)
+tinyopt_liveness (TinyOptASTNode_t *ast)
 {
-  if (!table)
+  if (!ast)
     return;
 
-  /* índice do escopo "global" */
-  uint64_t global_hash = stab_hash_string ("global");
-  size_t global_index = (size_t)(global_hash % table->size);
-
-  for (size_t i = 0; i < table->size; i++)
+  TinyOptCFG_t *cfg = tinyopt_cfg_build (ast);
+  if (!cfg || !cfg->nodes)
     {
-      SymbolBucket *bucket = table->buckets[i];
-      while (bucket)
-        {
-          Symbol *entry = bucket->symbol;
-          if (!entry || !entry->node || !entry->name)
-            {
-              bucket = bucket->next;
-              continue;
-            }
-
-          TinyOptASTNode_t *node = entry->node;
-
-          if (node->type == NODE_DECLARATION || node->type == NODE_ASSIGNMENT)
-            {
-              int used = 0;
-
-              /* Se o escopo deste entry for o "global" */
-              int is_global_scope = (i == global_index);
-
-              if (is_global_scope)
-                {
-                  /* Verifica TODOs os buckets procurando NODE_IDENTIFIER com
-                   * mesmo nome */
-                  for (size_t j = 0; j < table->size && !used; j++)
-                    {
-                      SymbolBucket *check_bucket = table->buckets[j];
-                      int usage
-                          = liveness_seek_usage (check_bucket, entry->name);
-                      if (usage)
-                        {
-                          used = 1;
-                          break;
-                        }
-                    }
-                }
-              else
-                {
-                  /* Escopo local: só olhamos no mesmo bucket (index == i) */
-                  /* Três casos:
-                     A) node == NODE_DECLARATION:  -> percorrer a partir da
-                     posição atual (entry) até o fim do bucket
-                     B) node == NODE_ASSIGNMENT && entry->loop_hash == 0 ->
-                     similar ao A
-                     C) node == NODE_ASSIGNMENT &&
-                     entry->loop_hash != 0 -> procurar a partir do primeiro
-                     elemento com loop_hash igual até fim
-                  */
-
-                  if (node->type == NODE_DECLARATION
-                      || (node->type == NODE_ASSIGNMENT
-                          && entry->loop_hash == 0))
-                    {
-                      /* percorre a partir da posição atual (entry->bucket
-                         node) -> usamos bucket (ponteiro atual) e iniciamos
-                         por bucket->next para considerar apenas posições
-                         depois do entry. OBS: bucket aponta para o elemento
-                         atual do laço externo.
-                      */
-                      SymbolBucket *tmp = bucket->next;
-                      int usage = liveness_seek_usage (tmp, entry->name);
-                      if (usage)
-                        {
-                          used = 1;
-                        }
-                    }
-                  else /* node->type == NODE_ASSIGNMENT && entry->loop_hash !=
-                          0 */
-                    {
-                      /* percorre o bucket inteiro, mas só começa a considerar
-                         quando encontrar o primeiro elemento cujo loop_hash ==
-                         entry->loop_hash */
-                      SymbolBucket *tmp = table->buckets[i];
-                      int start_checking = 0;
-                      while (tmp)
-                        {
-                          Symbol *check = tmp->symbol;
-                          if (!check)
-                            {
-                              tmp = tmp->next;
-                              continue;
-                            }
-
-                          if (!start_checking)
-                            {
-                              if (check->loop_hash == entry->loop_hash)
-                                {
-                                  /* a partir daqui passamos a verificar
-                                   * (inclusive esse check) */
-                                  start_checking = 1;
-                                }
-                            }
-
-                          if (start_checking)
-                            {
-                              int stmt
-                                  = liveness_var_stmt (check, entry->name);
-                              if (stmt)
-                                {
-                                  used = 1;
-                                  break;
-                                }
-                            }
-
-                          tmp = tmp->next;
-                        }
-                    }
-                }
-
-              if (!used)
-                node->is_dead_code = 1;
-            }
-
-          bucket = bucket->next;
-        }
+      if (cfg)
+        tinyopt_cfg_free (cfg);
+      return;
     }
-}
 
-int
-liveness_seek_usage (SymbolBucket *check_bucket, char *name)
-{
-  if (!check_bucket)
-    return 0;
-
-  Symbol *check = check_bucket->symbol;
-  if (liveness_var_stmt (check, name))
+  /* Conta nós e determina o maior id para dimensionar vetores por id-1. */
+  size_t count = 0;
+  int max_id = 0;
+  for (TinyOptCFGNode_t *n = cfg->nodes; n; n = n->next_in_cfg)
     {
-      if (check->node->type == NODE_IDENTIFIER)
+      count++;
+      if (n->id > max_id)
+        max_id = n->id;
+    }
+
+  if (max_id <= 0)
+    {
+      tinyopt_cfg_free (cfg);
+      return;
+    }
+
+  size_t n_nodes = (size_t)max_id;
+
+  VarSet *use = (VarSet *)calloc (n_nodes, sizeof (VarSet));
+  VarSet *def = (VarSet *)calloc (n_nodes, sizeof (VarSet));
+  VarSet *in = (VarSet *)calloc (n_nodes, sizeof (VarSet));
+  VarSet *out = (VarSet *)calloc (n_nodes, sizeof (VarSet));
+
+  if (!use || !def || !in || !out)
+    {
+      free (use);
+      free (def);
+      free (in);
+      free (out);
+      tinyopt_cfg_free (cfg);
+      return;
+    }
+
+  for (size_t i = 0; i < n_nodes; i++)
+    {
+      varset_init (&use[i]);
+      varset_init (&def[i]);
+      varset_init (&in[i]);
+      varset_init (&out[i]);
+    }
+
+  /* Computa USE/DEF de cada nó. */
+  for (TinyOptCFGNode_t *n = cfg->nodes; n; n = n->next_in_cfg)
+    {
+      if (n->id <= 0)
+        continue;
+      size_t idx = (size_t)(n->id - 1);
+      compute_use_def_for_node (n, &use[idx], &def[idx]);
+    }
+
+  /* Iteração de ponto fixo: IN/OUT. */
+  int changed;
+  int iter = 0;
+  const int max_iter = 1000;
+  do
+    {
+      changed = 0;
+      iter++;
+
+      for (TinyOptCFGNode_t *n = cfg->nodes; n; n = n->next_in_cfg)
         {
-          return 1;
-        }
-      else
-        {
-          if (check->loop_hash)
+          if (n->id <= 0)
+            continue;
+          size_t idx = (size_t)(n->id - 1);
+
+          /* OUT[n] = união dos IN dos sucessores */
+          VarSet new_out;
+          varset_init (&new_out);
+
+          // printf ("%d : %d\n", idx, n->ast->type);
+
+          if (n->succ_true && n->succ_true->id > 0)
             {
-              /* Atribuicoes ou declaracoes dentro de loops são verificadas
-               * posteriormente, de forma distinta, para evitar loops infinitos
-               */
-              return 1;
+              // printf("n->succ_true->id %d\n", n->succ_true->id);
+              size_t tidx = (size_t)(n->succ_true->id - 1);
+              varset_union_into (&new_out, &in[tidx]);
+            }
+          if (n->succ_false && n->succ_false->id > 0)
+            {
+              size_t fidx = (size_t)(n->succ_false->id - 1);
+              varset_union_into (&new_out, &in[fidx]);
+            }
+
+          /* Verifica se OUT mudou (tamanho ou conteúdo). */
+          int out_changed = 0;
+          if (new_out.size != out[idx].size)
+            {
+              out_changed = 1;
             }
           else
             {
-              return liveness_seek_usage (check_bucket->next, check->name);
+              for (size_t k = 0; k < new_out.size; k++)
+                {
+                  if (!varset_contains (&out[idx], new_out.data[k]))
+                    {
+                      out_changed = 1;
+                      break;
+                    }
+                }
             }
+
+          if (out_changed)
+            {
+              varset_free (&out[idx]);
+              out[idx] = new_out;
+            }
+          else
+            {
+              varset_free (&new_out);
+            }
+
+          // if (n->ast)
+          //   {
+          //     TinyOptASTNode_t *node = n->ast;
+          //     if (node->type == NODE_ASSIGNMENT)
+          //       {
+          //         TinyOptDeclarationNode_t *d
+          //             = (TinyOptDeclarationNode_t *)node;
+          //         uint64_t h = stab_hash_string (d->name);
+          //         if (!varset_contains (&out[idx], h))
+          //           {
+          //             varset_minus (&use[idx], &def[idx]);
+          //           }
+          //       }
+          //   }
+
+          /* IN[n] = USE[n] ∪ (OUT[n] – DEF[n]) */
+          VarSet new_in;
+          varset_init (&new_in);
+
+          varset_union_into (&new_in, &out[idx]);
+          varset_minus (&new_in, &def[idx]);
+          // varset_minus (&use[idx], &def[idx]);
+          varset_union_into (&new_in, &use[idx]);
+
+          // printf ("USE[%zu] = { ", idx);
+
+          // for (size_t i = 0; i < use[idx].size; i++)
+          //   {
+          //     printf ("%d ", use[idx].data[i]);
+          //   }
+
+          // printf ("}\n");
+          // printf ("DEF[%zu] = { ", idx);
+
+          // for (size_t i = 0; i < def[idx].size; i++)
+          //   {
+          //     printf ("%d ", def[idx].data[i]);
+          //   }
+
+          // printf ("}\n");
+
+          int in_changed = 0;
+          if (new_in.size != in[idx].size)
+            {
+              in_changed = 1;
+            }
+          else
+            {
+              for (size_t k = 0; k < new_in.size; k++)
+                {
+                  if (!varset_contains (&in[idx], new_in.data[k]))
+                    {
+                      in_changed = 1;
+                      break;
+                    }
+                }
+            }
+
+          if (in_changed)
+            {
+              varset_free (&in[idx]);
+              in[idx] = new_in;
+            }
+          else
+            {
+              varset_free (&new_in);
+            }
+
+          // printf ("out_changed %d | in_changed %d\n", out_changed,
+          // in_changed);
+          if (out_changed || in_changed)
+            changed = 1;
+        }
+    }
+  while (changed && iter < max_iter);
+
+  /* Marca declarações/atribuições cujo valor nunca está vivo após o nó. */
+  /* Primeiro, coletamos todas as variáveis que são de fato usadas em
+   * expressões (USE sets) para poder remover declarações completamente
+   * não utilizadas. */
+  VarSet used_vars;
+  varset_init (&used_vars);
+  for (TinyOptCFGNode_t *n = cfg->nodes; n; n = n->next_in_cfg)
+    {
+      if (!n->ast || n->id <= 0)
+        continue;
+      // printf("%d: %d\n", n->id, n->ast->type);
+      size_t idx = (size_t)(n->id - 1);
+      varset_union_into (&used_vars, &use[idx]);
+    }
+
+  for (TinyOptCFGNode_t *n = cfg->nodes; n; n = n->next_in_cfg)
+    {
+      if (!n->ast || n->id <= 0)
+        continue;
+
+      TinyOptASTNode_t *node = n->ast;
+
+      /* Declarações completamente não utilizadas (variável nunca aparece em
+       * nenhum USE) podem ser removidas com segurança. */
+      if (node->type == NODE_DECLARATION)
+        {
+          TinyOptDeclarationNode_t *d = (TinyOptDeclarationNode_t *)node;
+          if (d->name)
+            {
+              uint64_t h = stab_hash_string (d->name);
+              if (!varset_contains (&used_vars, h))
+                {
+                  node->is_dead_code = 1;
+                  continue;
+                }
+            }
+        }
+
+      /* Por segurança, só removemos atribuições mortas.
+       * Declarações são mantidas para preservar a correção do código gerado,
+       * mesmo que a definição inicial nunca seja utilizada.
+       */
+      if (node->type != NODE_ASSIGNMENT)
+        continue;
+
+      uint64_t var_hash = 0;
+      TinyOptAssignmentNode_t *a = (TinyOptAssignmentNode_t *)node;
+      if (a->variable)
+        var_hash = stab_hash_string (a->variable);
+
+      if (!var_hash)
+        continue;
+
+      size_t idx = (size_t)(n->id - 1);
+      if (!varset_contains (&out[idx], var_hash))
+        {
+          node->is_dead_code = 1;
         }
     }
 
-  return liveness_seek_usage (check_bucket->next, name);
+  for (size_t i = 0; i < n_nodes; i++)
+    {
+      varset_free (&use[i]);
+      varset_free (&def[i]);
+      varset_free (&in[i]);
+      varset_free (&out[i]);
+    }
+
+  free (use);
+  free (def);
+  free (in);
+  free (out);
+
+  tinyopt_cfg_free (cfg);
 }
 
-int
-liveness_exp (TinyOptASTNode_t *check, char *name)
+static void
+varset_init (VarSet *s)
 {
-  if (!check)
-    return 0;
-
-  if (check->type == NODE_IDENTIFIER)
-    {
-      TinyOptIdentifierNode_t *id = (TinyOptIdentifierNode_t *)check;
-      return strcmp (id->name, name) == 0;
-    }
-  else if (check->type == NODE_BINARY_OP)
-    {
-      TinyOptBinaryOpNode_t *bin = (TinyOptBinaryOpNode_t *)check;
-      return liveness_exp (bin->left, name)
-             || liveness_exp (bin->right, name) == 1;
-    }
-
-  return liveness_exp (check->next, name);
+  s->data = NULL;
+  s->size = 0;
+  s->capacity = 0;
 }
 
-int
-liveness_var_stmt (Symbol *check, char *name)
+static void
+varset_free (VarSet *s)
 {
-  if (!check || !check->node || check->node->is_dead_code)
-    return 0;
+  free (s->data);
+  s->data = NULL;
+  s->size = 0;
+  s->capacity = 0;
+}
 
-  if (check->node->type == NODE_ASSIGNMENT
-      || check->node->type == NODE_DECLARATION)
+static int
+varset_contains (VarSet *s, uint64_t v)
+{
+  for (size_t i = 0; i < s->size; i++)
     {
-      TinyOptASTNode_t *value = NULL;
-      /* Verifica AST de declaracoes */
-      if (check->node->type == NODE_DECLARATION)
-        {
-          TinyOptDeclarationNode_t *declaration
-              = (TinyOptDeclarationNode_t *)check->node;
-          if (declaration->initial_value)
-            {
-              value = (TinyOptASTNode_t *)declaration->initial_value;
-            }
-        }
-      else /* Verifica AST de atribuicoes */
-        {
-          TinyOptAssignmentNode_t *assig
-              = (TinyOptAssignmentNode_t *)check->node;
-          if (assig->value)
-            {
-              value = (TinyOptASTNode_t *)assig->value;
-            }
-        }
-      if (value)
-        {
-          int exp = liveness_exp (value, name);
-          if (exp)
-            {
-              return 1;
-            }
-        }
+      if (s->data[i] == v)
+        return 1;
     }
-
-  else if (check->node->type == NODE_IDENTIFIER
-           && strcmp (check->name, name) == 0)
-    {
-      return 1;
-    }
-
   return 0;
+}
+
+static int
+varset_add (VarSet *s, uint64_t v)
+{
+  if (varset_contains (s, v))
+    return 0;
+
+  if (s->size == s->capacity)
+    {
+      size_t new_cap = s->capacity ? s->capacity * 2 : 4;
+      uint64_t *new_data
+          = (uint64_t *)realloc (s->data, new_cap * sizeof (uint64_t));
+      if (!new_data)
+        return -1;
+      s->data = new_data;
+      s->capacity = new_cap;
+    }
+  s->data[s->size++] = v;
+  return 1;
+}
+
+static int
+varset_union_into (VarSet *dst, VarSet *src)
+{
+  int changed = 0;
+  for (size_t i = 0; i < src->size; i++)
+    {
+      if (varset_add (dst, src->data[i]) == 1)
+        changed = 1;
+    }
+  return changed;
+}
+
+static void
+varset_minus (VarSet *dst, VarSet *remove)
+{
+  size_t w = 0;
+  for (size_t i = 0; i < dst->size; i++)
+    {
+      uint64_t v = dst->data[i];
+      if (!varset_contains (remove, v))
+        {
+          dst->data[w++] = v;
+        }
+    }
+  dst->size = w;
+}
+
+static void
+collect_uses_expr (TinyOptASTNode_t *node, VarSet *use)
+{
+  if (!node)
+    return;
+
+  switch (node->type)
+    {
+    case NODE_IDENTIFIER:
+      {
+        TinyOptIdentifierNode_t *id = (TinyOptIdentifierNode_t *)node;
+        if (id->name)
+          {
+            uint64_t h = stab_hash_string (id->name);
+            varset_add (use, h);
+          }
+        break;
+      }
+    case NODE_NUMBER:
+    case NODE_CHAR_LITERAL:
+    case NODE_STRING_LITERAL:
+      /* não usam variáveis */
+      break;
+    case NODE_BINARY_OP:
+      {
+        TinyOptBinaryOpNode_t *b = (TinyOptBinaryOpNode_t *)node;
+        collect_uses_expr (b->left, use);
+        collect_uses_expr (b->right, use);
+        break;
+      }
+    case NODE_CONDITION:
+      {
+        TinyOptConditionNode_t *c = (TinyOptConditionNode_t *)node;
+        collect_uses_expr (c->left, use);
+        collect_uses_expr (c->right, use);
+        break;
+      }
+    case NODE_UNARY_OP:
+      {
+        TinyOptUnaryOpNode_t *u = (TinyOptUnaryOpNode_t *)node;
+        collect_uses_expr (u->operand, use);
+        break;
+      }
+    case NODE_FUNCTION_CALL:
+      {
+        TinyOptFunctionCallNode_t *call = (TinyOptFunctionCallNode_t *)node;
+        TinyOptASTNode_t *args = call->arguments;
+        while (args)
+          {
+            collect_uses_expr (args, use);
+            args = args->next;
+          }
+        break;
+      }
+    default:
+      /* fallback genérico: percorre next como lista de expressões */
+      collect_uses_expr (node->next, use);
+      break;
+    }
+}
+
+static void
+compute_use_def_for_node (TinyOptCFGNode_t *n, VarSet *use, VarSet *def)
+{
+  if (!n || !n->ast)
+    return;
+
+  TinyOptASTNode_t *node = n->ast;
+
+  switch (node->type)
+    {
+    case NODE_DECLARATION:
+      {
+        TinyOptDeclarationNode_t *d = (TinyOptDeclarationNode_t *)node;
+        if (d->name)
+          {
+            uint64_t h = stab_hash_string (d->name);
+            varset_add (def, h);
+          }
+        if (d->initial_value)
+          collect_uses_expr (d->initial_value, use);
+        break;
+      }
+    case NODE_ASSIGNMENT:
+      {
+        TinyOptAssignmentNode_t *a = (TinyOptAssignmentNode_t *)node;
+        if (a->variable)
+          {
+            uint64_t h = stab_hash_string (a->variable);
+            varset_add (def, h);
+            if (a->op != OP_ASSIGN)
+              {
+                varset_add (use, h);
+              }
+          }
+
+        if (a->value)
+          collect_uses_expr (a->value, use);
+        break;
+      }
+    case NODE_RETURN:
+      {
+        TinyOptReturnNode_t *r = (TinyOptReturnNode_t *)node;
+        if (r->value)
+          collect_uses_expr (r->value, use);
+        break;
+      }
+    case NODE_IF_STATEMENT:
+      {
+        TinyOptIfNode_t *i = (TinyOptIfNode_t *)node;
+        if (i->condition)
+          collect_uses_expr (i->condition, use);
+        break;
+      }
+    case NODE_WHILE_STATEMENT:
+      {
+        TinyOptWhileNode_t *w = (TinyOptWhileNode_t *)node;
+        if (w->condition)
+          collect_uses_expr (w->condition, use);
+        break;
+      }
+    case NODE_FOR_STATEMENT:
+      {
+        TinyOptForNode_t *f = (TinyOptForNode_t *)node;
+        if (f->condition)
+          collect_uses_expr (f->condition, use);
+        break;
+      }
+    case NODE_FUNCTION_CALL:
+      {
+        TinyOptFunctionCallNode_t *call = (TinyOptFunctionCallNode_t *)node;
+        TinyOptASTNode_t *args = call->arguments;
+        while (args)
+          {
+            collect_uses_expr (args, use);
+            args = args->next;
+          }
+        break;
+      }
+    default:
+      /* outros tipos: podem conter expressões; tenta tratá-los como expressão
+       */
+      collect_uses_expr (node, use);
+      break;
+    }
 }

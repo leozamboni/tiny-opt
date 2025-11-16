@@ -51,7 +51,7 @@ tinyopt_optimize (TinyOpt_t **tinyopt)
   tinyopt_stab_init ((*tinyopt)->ast, (*tinyopt)->stab, 0, "global");
 
   tinyopt_reachability ((*tinyopt)->ast, (*tinyopt)->stab, "global");
-  tinyopt_liveness ((*tinyopt)->stab);
+  tinyopt_liveness ((*tinyopt)->ast);
   tinyopt_dead_store ((*tinyopt)->stab);
   tinyopt_empty_blocks ((*tinyopt)->ast);
 

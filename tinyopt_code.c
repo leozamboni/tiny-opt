@@ -29,8 +29,8 @@
  *  you should have received a copy of the gnu general public license
  *  along with this program.  if not, see <http://www.gnu.org/licenses/>.
  */
-#include <stdio.h>
 #include "tinyopt_code.h"
+#include <stdio.h>
 
 static void emit_stmt_list (TinyOptASTNode_t * node);
 static void emit_stmt (TinyOptASTNode_t * node);

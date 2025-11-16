@@ -34,49 +34,6 @@
 
 #include "tinyopt_ast.h"
 
-typedef struct TinyOptCFGNode TinyOptCFGNode_t;
-typedef struct TinyOptCFG TinyOptCFG_t;
-
-struct TinyOptCFGNode
-{
-  int id;
-
-  /* Nó da AST associado a este ponto do fluxo.
-   *
-   * - Para comandos simples (declaração, atribuição, return, break, continue,
-   *   chamada de função) aponta diretamente para o nó correspondente.
-   * - Para nós de condição de if/while/for aponta para o respectivo nó de
-   *   condição.
-   * - Para nós "join"/pós-laço pode ser NULL (apenas ponto de junção).
-   */
-  TinyOptASTNode_t *ast;
-
-  /* Ligações de fluxo de controle.
-   *
-   * Em estruturas condicionais/loops usamos:
-   *   - succ_true  : ramo "verdadeiro" (ex: corpo do if/while/for)
-   *   - succ_false : ramo "falso" / saída
-   *
-   * Para comandos lineares, normalmente apenas succ_true é usado
-   * (aponta para o próximo nó na sequência).
-   */
-  TinyOptCFGNode_t *succ_true;
-  TinyOptCFGNode_t *succ_false;
-
-  /* Lista encadeada global de nós do grafo (útil para percursos de análise). */
-  TinyOptCFGNode_t *next_in_cfg;
-};
-
-struct TinyOptCFG
-{
-  TinyOptCFGNode_t *entry;
-  TinyOptCFGNode_t *exit;
-  TinyOptCFGNode_t *nodes; /* cabeça da lista encadeada de nós */
-};
-
-TinyOptCFG_t *tinyopt_cfg_build (TinyOptASTNode_t *ast);
-void tinyopt_cfg_free (TinyOptCFG_t *cfg);
+void print_cfg_dot (TinyOptASTNode_t * ast);
 
 #endif // TINYOPT_CFG
-
-

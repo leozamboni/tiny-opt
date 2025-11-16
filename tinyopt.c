@@ -31,7 +31,7 @@
  */
 #include "tinyopt.h"
 #include "tinyopt_ast.h"
-#include "tinyopt_cfg.h"
+#include "tinyopt_dot_cfg.h"
 #include "tinyopt_code.h"
 #include "tinyopt_core.h"
 #include <stdio.h>
