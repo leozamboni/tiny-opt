@@ -1,13 +1,4 @@
 #!/usr/bin/env python3
-"""
-Script para gerar gráficos principais de análise.
-Gera 4 gráficos específicos:
-1. Média de instruções removidas de cada compilador
-2. Comparação de número de instruções dos 20 primeiros casos
-3. Dispersão de instruções removidas (TinyOpt e O0)
-4. Pizza com preservação de semântica do TinyOpt
-"""
-
 import csv
 import matplotlib.pyplot as plt
 import numpy as np
@@ -127,7 +118,7 @@ print("\n=== Gerando gráfico 2: Comparação dos 20 primeiros casos ===")
 
 # Pegar primeiros 20 casos válidos (com todos os dados)
 valid_first20 = []
-for c in case_data[:20]:
+for c in case_data[:19]:
     if (c['instr_o0'] is not None and c['instr_o2'] is not None and 
         c['instr_o3'] is not None and c['instr_tiny'] is not None):
         valid_first20.append(c)

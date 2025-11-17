@@ -87,7 +87,7 @@ for src in "$FUZZ_DIR"/*.c; do
     [[ "$exit_O0" -eq "$exit_tinyO0" ]] && same_exit=1
 
     # 11) CSV
-    echo "$index;$same_exit;$count_O0;$count_O2;$count_O3;$count_TCC;$count_tinyO0;$size_O0;$size_O2;$size_O3;$size_TCC;$size_tinyO0;$time_O0;$time_O2;$time_O3;$time_TCC;$time_tinyO0" >> "$CSV_FILE"
+    echo "$index;$same_exit;$count_O0;$count_O2;$count_O3;$count_tinyO0;" >> "$CSV_FILE"
 
 done
 
