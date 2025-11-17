@@ -2,9 +2,11 @@ lex.yy.c
 parser.tab.c
 parser.tab.h
 tinyopt
-results.csv
+examples_results.csv
 compile_commands.json
 .puml
 bin
 *.c~
 *.h~
+fuzzing
+tmp

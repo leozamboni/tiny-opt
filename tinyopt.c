@@ -14,7 +14,7 @@
  *⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⡎⠀⠀⠀⢸⠏⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
  *⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⠻⠿⠶⠂⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠛⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
  *  TinyOpt
- *  Copyright (c) 2025 leozamboni 
+ *  Copyright (c) 2025 leozamboni
  *
  *  this program is free software: you can redistribute it and/or modify
  *  it under the terms of the gnu general public license as published by
@@ -31,9 +31,9 @@
  */
 #include "tinyopt.h"
 #include "tinyopt_ast.h"
-#include "tinyopt_dot_cfg.h"
 #include "tinyopt_code.h"
 #include "tinyopt_core.h"
+#include "tinyopt_dot_cfg.h"
 #include <stdio.h>
 
 int yyparse (TinyOptASTNode_t *global_ast);
@@ -96,10 +96,16 @@ tinyopt_free (TinyOpt_t **tinyopt)
     {
       free_ast ((*tinyopt)->ast);
     }
-
-  free_stab ((*tinyopt)->stab);
-
-  free ((*tinyopt)->flags);
-  free ((*tinyopt)->stab);
-  free ((*tinyopt));
+  if ((*tinyopt)->stab)
+    {
+      free_stab ((*tinyopt)->stab);
+    }
+  if ((*tinyopt)->flags)
+    {
+      free ((*tinyopt)->flags);
+    }
+  if ((*tinyopt))
+    {
+      free ((*tinyopt));
+    }
 }

@@ -2,7 +2,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 
-CSV_PATH = "results.csv" 
+CSV_PATH = "./tests/examples_results.csv" 
 
 df = pd.read_csv(CSV_PATH)
 
@@ -12,11 +12,10 @@ df["Compilacao"] = df["Compilacao"].replace({
     "gcc -O0": "GCC -O0",
     "gcc -O2": "GCC -O2",
     "gcc -O3": "GCC -O3",
-    "clang -O3": "Clang -O3",
     "tinyopt+gcc -O0": "TinyOpt + GCC -O0"
 })
 
-ordem_compilacoes = ["GCC -O0", "GCC -O2", "GCC -O3", "Clang -O3", "TinyOpt + GCC -O0"]
+ordem_compilacoes = ["GCC -O0", "GCC -O2", "GCC -O3", "TinyOpt + GCC -O0"]
 
 pivot_df = df.pivot_table(index="File", columns="Compilacao", values="Instructions")
 

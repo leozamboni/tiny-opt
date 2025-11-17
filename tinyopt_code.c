@@ -38,7 +38,6 @@ static void emit_expr (TinyOptASTNode_t * node);
 static const char *dtype_to_str (DataType t);
 static const char *op_to_assign_str (Operator op);
 static const char *relop_to_str (Operator op);
-static void emit_indent (int n);
 static void emit_block (TinyOptASTNode_t * node, int indent);
 static void emit_parameter_list (TinyOptASTNode_t * node);
 static void emit_argument_list (TinyOptASTNode_t * node);
@@ -138,22 +137,13 @@ relop_to_str (Operator op)
 }
 
 static void
-emit_indent (int n)
-{
-  for (int i = 0; i < n; i++)
-    printf ("  ");
-}
-
-static void
 emit_block (TinyOptASTNode_t *node, int indent)
 {
   printf ("{\n");
   for (TinyOptASTNode_t * cur = node; cur; cur = cur->next)
     {
-      emit_indent (indent);
       emit_stmt (cur, indent);
     }
-  emit_indent (indent - 1);
   printf ("}\n");
 }
 
@@ -246,9 +236,7 @@ emit_stmt (TinyOptASTNode_t *node, int indent)
 	    else
 	      {
 		printf ("{\n");
-		emit_indent (indent + 1);
 		emit_stmt (i->then_statement, indent + 1);
-		emit_indent (indent);
 		printf ("}\n");
 	      }
 	    if (i->else_statement)
@@ -262,9 +250,7 @@ emit_stmt (TinyOptASTNode_t *node, int indent)
 		else
 		  {
 		    printf ("{\n");
-		    emit_indent (indent + 1);
 		    emit_stmt (i->else_statement, indent + 1);
-		    emit_indent (indent);
 		    printf ("}\n");
 		  }
 	      }
@@ -296,9 +282,7 @@ emit_stmt (TinyOptASTNode_t *node, int indent)
 	else if (w->body)
 	  {
 	    printf ("{\n");
-	    emit_indent (indent + 1);
 	    emit_stmt (w->body, indent + 1);
-	    emit_indent (indent);
 	    printf ("}\n");
 	  }
 	break;
@@ -356,9 +340,7 @@ emit_stmt (TinyOptASTNode_t *node, int indent)
 	else if (f->body)
 	  {
 	    printf ("{\n");
-	    emit_indent (indent + 1);
 	    emit_stmt (f->body, indent + 1);
-	    emit_indent (indent);
 	    printf ("}\n");
 	  }
 	break;
@@ -403,9 +385,7 @@ emit_stmt (TinyOptASTNode_t *node, int indent)
 	else if (f->body)
 	  {
 	    printf ("{\n");
-	    emit_indent (1);
 	    emit_stmt (f->body, 1);
-	    emit_indent (0);
 	    printf ("}\n");
 	  }
 	break;

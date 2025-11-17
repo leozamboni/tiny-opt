@@ -90,6 +90,9 @@ statement:
     | for_statement           { $$ = $1; }
     | compound_statement      { $$ = $1; }
     | function_def            { $$ = $1; }
+    | RETURN ';'   { 
+        $$ = create_return_node(NULL);
+    }
     | RETURN expression ';'   { 
         $$ = create_return_node($2);
     }
